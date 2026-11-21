@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HyperValues</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <script src="theme.js"></script>
+    <script src="linebreak.js"></script>
+</head>
+<body>
+    <div class="main-container">
+        <div class="title-container">
+            <h1>HyperValues</h1>
+            <span class="version-text">v3.15.0</span>
+        </div>
+
+        <div id="values-container" class="category-list"></div>
+
+        <div id="results-panel" class="results-panel" style="display: none;">
+            <div id="label"></div>
+            <div id="closest-section" style="display: none;">
+                <div id="closest-list"></div>
+            </div>
+        </div>
+
+        <div id="explain-panel" class="ins-section" style="display: none;"></div>
+        <div id="radar-panel" class="ins-section" style="display: none;"></div>
+        <div id="map-panel" class="ins-section" style="display: none;"></div>
+
+        <div class="button-container">
+            <button id="clear-button" style="display: none;">Clear all</button>
+            <div id="share-row" class="download-row" style="display: none;">
+                <button id="share-button">Copy share link</button>
+                <button id="compare-button" onclick="location.href='compare.html'">Compare with a friend or an ideology</button>
+                <button id="axes-button" onclick="location.href='axes.html'">Build your own map axes</button>
+            </div>
+            <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
+            <div id="download-row" class="download-row" style="display: none;">
+                <button id="download-button">Download image</button>
+                <select id="image-scale" aria-label="Image size" title="Image size">
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="3">3x</option>
+                </select>
+            </div>
+            <button onclick="location.href='index.html'">Back to menu</button>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="ideology_matrix.js"></script>
+    <script src="scoring.js"></script>
+    <script src="share.js"></script>
+    <script src="insights.js"></script>
+    <script src="share_image.js"></script>
+    <script>
+        let answers = HV.loadAnswers();
+
+        const byId = id => document.getElementById(id);
+
+        function makeTile(href, title) {
+            const tile = document.createElement('a');
+            tile.className = 'result-item';
+            tile.href = href;
+            tile.style.textDecoration = 'none';
+            tile.style.color = 'inherit';
+            if (title) tile.title = title;
+            return tile;
+        }
+
+        function renderLists() {
+            const container = byId('values-container');
+            container.innerHTML = '';
+
+            categories.forEach(category => {
+                const section = document.createElement('div');
+                section.className = 'category-section';
+                section.id = `cat-${category}`;
+
+                const title = document.createElement('h2');
+                title.className = 'category-title';
+                title.innerText = categoryTitles[category] || category;
+                section.appendChild(title);
+
+                const flex = document.createElement('div');
+                flex.className = 'values-flex-container';
+                const list = answers[category];
+
+                (list || []).slice().sort((a, b) => b.agree - a.agree).forEach(item => {
+                    const tile = makeTile(`description.html?id=${item.value}&cat=${category}&edit=1`,
+                        `${HV.nameOf(category, item.value)}: ${HV.signed(item.agree)}`);
+
+                    const img = document.createElement('img');
+                    img.src = `icons/${category}/${item.value}.svg`;
+                    img.className = 'result-icon';
+                    img.alt = '';
+                    img.style.borderRadius = '50%';
+                    img.style.boxShadow = `0 0 0 3px var(--bg-color), 0 0 0 6px ${HV.ringColor(item.agree)}`;
+                    img.onerror = () => { img.style.display = 'none'; };
+
+                    const name = document.createElement('p');
+                    name.className = 'result-text';
+                    setName(name, HV.nameOf(category, item.value));
+
+                    const agree = document.createElement('p');
+                    agree.className = 'result-agree';
+                    agree.textContent = HV.signed(item.agree);
+
+                    tile.appendChild(img);
+                    tile.appendChild(name);
+                    tile.appendChild(agree);
+                    flex.appendChild(tile);
+                });
+
+                const add = makeTile(`quiz.html?cat=${category}`);
+                const circle = document.createElement('div');
+                circle.className = 'result-icon result-none add-icon';
+                const label = document.createElement('p');
+                label.className = 'result-text';
+                label.textContent = 'Add new value';
+                add.appendChild(circle);
+                add.appendChild(label);
+                flex.appendChild(add);
+
+                section.appendChild(flex);
+                container.appendChild(section);
+            });
+        }
+
+        // Best match and the next closest matches (scoring lives in scoring.js)
+        function renderResults() {
+            const panel = byId('results-panel');
+            const labelDiv = byId('label');
+            const closestSection = byId('closest-section');
+            const closestList = byId('closest-list');
+            labelDiv.innerHTML = '';
+            closestList.innerHTML = '';
+            closestSection.style.display = 'none';
+            ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = 'none'; });
+
+            const touched = categories.some(category => answers[category]);
+            panel.style.display = touched ? '' : 'none';
+            byId('clear-button').style.display = touched ? '' : 'none';
+            byId('download-row').style.display = touched ? '' : 'none';
+            byId('share-row').style.display = touched ? '' : 'none';
+            if (!touched) return;
+
+            const ranked = HV.closestIdeologies(answers, null, 1 + HV.CLOSEST_COUNT);
+            const best = ranked[0];
+            const closestMatches = ranked.slice(1);
+
+            labelDiv.className = 'label-bubble';
+            labelDiv.style.backgroundColor = best ? (labelColors[best.label] || '#7a7a7a') : '#7a7a7a';
+            labelDiv.style.color = best ? hvInk.onFill((labelColors[best.label] || '#7a7a7a').slice(0, 7)) : '#ffffff';
+
+            if (best) {
+                const labelLink = document.createElement('a');
+                labelLink.href = `description.html?id=${encodeURIComponent(best.label)}&type=ideology&compare=1`;
+                labelLink.style.cssText = 'color: inherit; text-decoration: none; display: block;';
+                labelLink.title = `Probability ${HV.percent(best.probability)}`;
+                const labelName = document.createElement('span');
+                setName(labelName, best.label);
+                const labelScore = document.createElement('span');
+                labelScore.className = 'label-score';
+                labelScore.textContent = `(${HV.percent(best.probability)})`;
+                labelLink.append(labelName, ' ', labelScore);
+                labelDiv.appendChild(labelLink);
+
+            } else {
+                setName(labelDiv, 'No match');
+            }
+
+            if (closestMatches.length > 0) {
+                closestSection.style.display = 'flex';
+                closestMatches.forEach((match, index) => {
+                    const color = (labelColors[match.label] || '#7a7a7a').slice(0, 7);
+
+                    // Same look as the original "Next closest match": an outlined bubble in the ideology's color
+                    const pill = document.createElement('a');
+                    pill.className = 'closest-pill';
+                    pill.href = `description.html?id=${encodeURIComponent(match.label)}&type=ideology&compare=1`;
+                    pill.style.setProperty('--pill-color', color);
+                    pill.style.setProperty('--pill-ink-dark', hvInk.forDark(color));
+                    pill.style.setProperty('--pill-ink-light', hvInk.forLight(color));
+                    pill.title = `Probability ${HV.percent(match.probability)}`;
+
+                    const rank = document.createElement('span');
+                    rank.className = 'cp-rank';
+                    rank.textContent = `${index + 1}.`;
+                    const name = document.createElement('span');
+                    name.className = 'cp-name';
+                    setName(name, match.label);
+                    const score = document.createElement('span');
+                    score.className = 'cp-score';
+                    score.textContent = `(${HV.percent(match.probability)})`;
+
+                    pill.append(rank, ' ', name, ' ', score);
+                    closestList.appendChild(pill);
+                });
+            }
+
+            if (best) {
+                ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = ''; });
+                HVInsights.renderExplainer(byId('explain-panel'), answers, ranked.slice(0, 4));
+                HVInsights.renderRadar(byId('radar-panel'), answers, ranked.slice(0, 3));
+                HVInsights.renderMap(byId('map-panel'), [{ name: 'You', answers }]);
+            }
+        }
+
+        function render() {
+            renderLists();
+            renderResults();
+            fitNames();
+        }
+
+        byId('download-button').onclick = async () => {
+            const button = byId('download-button');
+            const label = button.textContent;
+            const wanted = Number(byId('image-scale').value) || 1;
+            button.disabled = true;
+            button.textContent = 'Preparing...';
+            try {
+                const used = await HVImage.download(answers, wanted);
+                if (Object.keys(used).some(kind => used[kind] < wanted)) {
+                    const saved = Object.keys(used)
+                        .map(kind => `${kind} ${HVImage.SIZES[kind].w * used[kind]} \u00d7 ${HVImage.SIZES[kind].h * used[kind]}`)
+                        .join(', ');
+                    alert(`This browser cannot make every picture ${wanted}x bigger. Saved: ${saved}.`);
+                }
+            } catch (e) {
+                alert('The image could not be created in this browser.');
+            }
+            button.textContent = label;
+            button.disabled = false;
+        };
+
+        // a link that carries your values in its address, for the shared result page and for comparing
+        byId('share-button').onclick = async () => {
+            const link = HVShare.link('shared.html', answers);
+            const status = byId('share-status');
+            try {
+                await navigator.clipboard.writeText(link);
+                status.textContent = 'Link copied. It contains your values and nothing else.';
+            } catch (e) {
+                status.textContent = '';
+                window.prompt('Copy this link:', link);
+            }
+        };
+
+        byId('clear-button').onclick = () => {
+            if (!confirm('Clear all your values?')) return;
+            answers = {};
+            HV.saveAnswers(answers);
+            render();
+        };
+
+        render();
+
+        // after adding a value, the page opens at that category
+        if (location.hash.indexOf('#cat-') === 0) {
+            const target = document.getElementById(location.hash.slice(1));
+            if (target) target.scrollIntoView();
+        }
+
+        // coming back with the browser's back button can show an old copy of the page
+        window.addEventListener('pageshow', event => {
+            if (event.persisted) {
+                answers = HV.loadAnswers();
+                render();
+            }
+        });
+    </script>
+</body>
+</html>

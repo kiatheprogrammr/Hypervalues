@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compare - HyperValues</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <script src="theme.js"></script>
+    <script src="linebreak.js"></script>
+</head>
+<body>
+    <div class="main-container">
+        <h1>Compare</h1>
+        <p class="share-note">See where two people agree and disagree, by category and by ideology, or compare your values with any single ideology. Paste the share link of the other person, or choose an ideology; your own values are used unless you paste a link for the first side too.</p>
+
+        <div class="ins-section" style="margin-top: 20px;">
+            <div class="compare-form">
+                <div class="compare-side">
+                    <label for="name-a">First person</label>
+                    <input id="name-a" type="text" maxlength="24" autocomplete="off">
+                    <label for="code-a">Link or code (optional)</label>
+                    <textarea id="code-a" spellcheck="false" aria-describedby="hint-a"></textarea>
+                    <p id="hint-a" class="compare-hint">Leave empty to use the values saved in this browser.</p>
+                </div>
+                <div class="compare-side">
+                    <fieldset class="compare-mode">
+                        <legend>Compare with</legend>
+                        <label><input type="radio" name="mode" value="person" checked> Another person</label>
+                        <label><input type="radio" name="mode" value="ideology"> An ideology</label>
+                    </fieldset>
+                    <div id="side-person" class="compare-side">
+                        <label for="name-b">Second person</label>
+                        <input id="name-b" type="text" maxlength="24" autocomplete="off">
+                        <label for="code-b">Link or code</label>
+                        <textarea id="code-b" spellcheck="false" aria-describedby="hint-b"></textarea>
+                        <p id="hint-b" class="compare-hint">Paste the link from "Copy share link" on their results page.</p>
+                    </div>
+                    <div id="side-ideology" class="compare-side" hidden>
+                        <label for="ideology-filter">Find an ideology</label>
+                        <input id="ideology-filter" type="search" autocomplete="off" aria-controls="ideology-list">
+                        <label for="ideology-order" id="ideology-order-label">Order</label>
+                        <select id="ideology-order">
+                            <option value="fit">Best fit for the first person</option>
+                            <option value="az">A to Z</option>
+                        </select>
+                        <label for="ideology-list">All ideologies (<span id="ideology-count"></span>)</label>
+                        <select id="ideology-list" size="8" aria-describedby="hint-i"></select>
+                        <p id="hint-i" class="compare-hint">Choosing an ideology compares it right away. Use the arrow keys to browse.</p>
+                        <div id="ideology-quick" class="compare-quick" aria-label="Closest ideologies"></div>
+                    </div>
+                </div>
+            </div>
+            <p id="compare-error" class="compare-error" role="alert" style="display: none;"></p>
+            <div class="button-container" style="margin-bottom: 0;">
+                <button id="compare-run">Compare</button>
+            </div>
+        </div>
+
+        <div id="comparison" style="width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
+
+        <div class="button-container">
+            <button id="copy-button" style="display: none;">Copy comparison link</button>
+            <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
+            <button onclick="location.href='results.html'">Back to my results</button>
+            <button onclick="location.href='index.html'">Back to menu</button>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="ideology_matrix.js"></script>
+    <script src="scoring.js"></script>
+    <script src="share.js"></script>
+    <script src="insights.js"></script>
+    <script>
+        const byId = id => document.getElementById(id);
+        const el = HVInsights.el;
+        const hasValues = answers => categories.some(cat => answers[cat] && answers[cat].length);
+        const percent = x => Math.round(x * 100) + '%';
+        const AGREE_WITHIN = 0.5;       // two answers this close count as agreeing
+
+        let current = null;             // { codeA, codeB, nameA, nameB } of the comparison on screen
+
+        function readHash() {
+            const params = new URLSearchParams(location.hash.slice(1));
+            return { a: params.get('a'), b: params.get('b'), an: params.get('an'), bn: params.get('bn'), i: params.get('i'), m: params.get('m') };
+        }
+
+        function showError(text) {
+            const box = byId('compare-error');
+            box.textContent = text;
+            box.style.display = text ? '' : 'none';
+        }
+
+        // The answers of one side: its pasted link or code, or (first side only) the values saved in this browser
+        function resolveSide(text, isFirst) {
+            const typed = text.trim();
+            if (typed) {
+                const code = HVShare.codeFromText(typed);
+                return code ? { code, answers: HVShare.decode(code), local: false } : { error: 'That link or code could not be read.' };
+            }
+            if (!isFirst) return { error: 'Paste a link or code for the second person.' };
+            const mine = HV.loadAnswers();
+            return hasValues(mine) ? { code: HVShare.encode(mine), answers: mine, local: true } : { error: 'There are no values saved in this browser yet. Take the quiz first, or paste a link for the first person.' };
+        }
+
+        function defaultNames(aLocal) { return aLocal ? ['You', 'Them'] : ['Person A', 'Person B']; }
+
+        const currentMode = () => document.querySelector('input[name="mode"]:checked').value;
+
+        function run(options) {
+            if (currentMode() === 'ideology') return runIdeology(options);
+            const a = resolveSide(byId('code-a').value, true);
+            const b = resolveSide(byId('code-b').value, false);
+            if (a.error || b.error) {
+                showError(a.error ? 'First person: ' + a.error : 'Second person: ' + b.error);
+                byId('comparison').innerHTML = '';
+                byId('copy-button').style.display = 'none';
+                return;
+            }
+            showError('');
+            const [defA, defB] = defaultNames(a.local);
+            const nameA = byId('name-a').value.trim() || defA;
+            const nameB = byId('name-b').value.trim() || defB;
+            current = { codeA: a.code, codeB: b.code, nameA, nameB };
+            // a link that stays the same for whoever opens it
+            if (!options || !options.keepHash) {
+                history.replaceState(null, '', '#' + comparisonHash());
+            }
+            renderComparison(a.answers, b.answers, nameA, nameB);
+            byId('copy-button').style.display = '';
+        }
+
+        function comparisonHash() {
+            if (current.ideology) return `a=${current.codeA}&i=${encodeURIComponent(current.ideology)}&an=${encodeURIComponent(current.nameA)}`;
+            return `a=${current.codeA}&b=${current.codeB}&an=${encodeURIComponent(current.nameA)}&bn=${encodeURIComponent(current.nameB)}`;
+        }
+
+        // ------------------------------------------------------------------------------------------
+        function section(title, intro) {
+            const box = el('section', 'ins-section');
+            box.append(el('h2', 'ins-heading', title));
+            if (intro) box.append(el('p', 'ins-intro', intro));
+            return box;
+        }
+
+        function rankList(items, noteOf) {
+            const list = el('ol', 'compare-rank');
+            items.forEach(item => {
+                const li = el('li');
+                const link = el('a');
+                link.href = `description.html?id=${encodeURIComponent(item.label)}&type=ideology`;
+                const dot = el('span', 'compare-dot');
+                dot.style.backgroundColor = HVInsights.colorOf(item.label);
+                const name = el('span', '', item.label);
+                link.append(dot, name, el('span', 'compare-rank-note', noteOf(item)));
+                li.append(link);
+                list.append(li);
+            });
+            return list;
+        }
+
+        function column(title, content) {
+            const box = el('div');
+            box.append(el('h3', 'ins-group-title', title), content);
+            return box;
+        }
+
+        function renderComparison(A, B, nameA, nameB) {
+            const host = byId('comparison');
+            host.innerHTML = '';
+            const result = HVInsights.overlap(A, B);
+            const probA = {}, probB = {};
+            result.rankedA.forEach(item => { probA[item.label] = item.probability; });
+            result.rankedB.forEach(item => { probB[item.label] = item.probability; });
+            const topA = HV.closestIdeologies(A, null, 5);
+            const topB = HV.closestIdeologies(B, null, 5);
+
+            // ---- overall
+            const overall = section('How alike you are');
+            const scores = el('div', 'compare-score-row');
+            const s1 = el('div', 'compare-score');
+            s1.append(el('div', 'compare-score-number', percent(result.ideology)),
+                el('div', 'compare-score-label', 'Ideology overlap: how much of the probability both results put on the same ideologies.'));
+            const s2 = el('div', 'compare-score');
+            s2.append(el('div', 'compare-score-number', result.values === null ? 'None' : percent(result.values)),
+                el('div', 'compare-score-label', result.values === null
+                    ? 'No value was answered by both people, so there is nothing to compare value by value yet.'
+                    : `Value agreement on the ${result.sharedValues} value${result.sharedValues === 1 ? '' : 's'} both answered (100% means identical answers, 0% opposite ones).`));
+            scores.append(s1, s2);
+            overall.append(scores);
+            if (topA[0] && topB[0]) {
+                overall.append(el('p', 'ins-summary', topA[0].label === topB[0].label
+                    ? `Both of you are closest to ${topA[0].label}.`
+                    : `${nameA} is closest to ${topA[0].label}, ${nameB} to ${topB[0].label}.`));
+            }
+            const tops = el('div', 'compare-top');
+            tops.append(
+                column(`${nameA}'s closest ideologies`, rankList(topA, item => HV.percent(item.probability))),
+                column(`${nameB}'s closest ideologies`, rankList(topB, item => HV.percent(item.probability)))
+            );
+            overall.append(tops);
+            host.append(overall);
+
+            // ---- by ideology
+            const labels = HVInsights.labels;
+            const shared = labels.map(label => ({ label, both: Math.sqrt((probA[label] || 0) * (probB[label] || 0)) }))
+                .sort((x, y) => y.both - x.both).slice(0, 5);
+            const gap = labels.map(label => ({ label, diff: (probA[label] || 0) - (probB[label] || 0) }));
+            const moreA = gap.filter(x => x.diff > 0).sort((x, y) => y.diff - x.diff).slice(0, 3);
+            const moreB = gap.filter(x => x.diff < 0).sort((x, y) => x.diff - y.diff).slice(0, 3);
+            const byIdeology = section('By ideology', 'The ideologies that fit both of you, and the ones that fit one of you much better than the other.');
+            byIdeology.append(el('h3', 'ins-group-title', 'Fit both of you'),
+                rankList(shared, item => `${nameA} ${HV.percent(probA[item.label])}, ${nameB} ${HV.percent(probB[item.label])}`));
+            const split = el('div', 'compare-top');
+            const note = item => `${nameA} ${HV.percent(probA[item.label])}, ${nameB} ${HV.percent(probB[item.label])}`;
+            split.append(column(`Fit ${nameA} much more`, rankList(moreA, note)), column(`Fit ${nameB} much more`, rankList(moreB, note)));
+            byIdeology.append(split);
+            host.append(byIdeology);
+
+            // ---- by category
+            const byCategory = section('By category', 'Open a category to see its values. A value counts as agreed when the two answers are within 0.5 of each other.');
+            categories.forEach(cat => {
+                const listA = A[cat] || [], listB = B[cat] || [];
+                if (!listA.length && !listB.length) return;
+                const rows = {};
+                listA.forEach(item => { rows[item.value] = { a: Number(item.agree) || 0, b: null }; });
+                listB.forEach(item => { (rows[item.value] = rows[item.value] || { a: null, b: null }).b = Number(item.agree) || 0; });
+                const agree = [], differ = [], onlyA = [], onlyB = [];
+                let closeness = 0, counted = 0;
+                Object.keys(rows).forEach(value => {
+                    const row = rows[value];
+                    const base = { category: cat, value };
+                    if (row.a !== null && row.b !== null) {
+                        const distance = Math.abs(row.a - row.b);
+                        closeness += 1 - distance / 2;
+                        counted++;
+                        const item = Object.assign(base, { a: row.a, b: row.b, distance, score: 1 - distance });
+                        (distance <= AGREE_WITHIN ? agree : differ).push(item);
+                    } else if (row.a !== null) onlyA.push(Object.assign(base, { a: row.a }));
+                    else onlyB.push(Object.assign(base, { b: row.b }));
+                });
+                agree.sort((x, y) => x.distance - y.distance);
+                differ.sort((x, y) => y.distance - x.distance);
+
+                const details = el('details', 'compare-cat');
+                if (differ.length) details.open = true;
+                const summary = el('summary');
+                summary.append(el('span', 'compare-cat-name', categoryTitles[cat] || cat));
+                const bar = el('div', 'compare-bar');
+                bar.setAttribute('role', 'img');
+                bar.setAttribute('aria-label', counted ? `Agreement ${percent(closeness / counted)}` : 'No value answered by both');
+                const fill = el('span');
+                fill.style.width = counted ? percent(closeness / counted) : '0%';
+                bar.append(fill);
+                summary.append(bar, el('span', 'compare-cat-counts',
+                    `${agree.length} agree, ${differ.length} differ, ${onlyA.length} only ${nameA}, ${onlyB.length} only ${nameB}`));
+                details.append(summary);
+
+                const body = el('div', 'compare-cat-body');
+                const both = r => `${nameA} ${HV.signed(r.a)}, ${nameB} ${HV.signed(r.b)}`;
+                if (agree.length) body.append(HVInsights.chipGroup('Agree', agree, both, '', 6));
+                if (differ.length) body.append(HVInsights.chipGroup('Differ', differ, both, '', 6));
+                if (onlyA.length) body.append(HVInsights.chipGroup(`Only ${nameA}`, onlyA, r => `${nameA} ${HV.signed(r.a)}`, '', 6));
+                if (onlyB.length) body.append(HVInsights.chipGroup(`Only ${nameB}`, onlyB, r => `${nameB} ${HV.signed(r.b)}`, '', 6));
+                details.append(body);
+                byCategory.append(details);
+            });
+            host.append(byCategory);
+
+            // ---- map
+            const mapBox = el('div', 'ins-section');
+            host.append(mapBox);
+            HVInsights.renderMap(mapBox, [{ name: nameA, answers: A }, { name: nameB, answers: B }], {
+                title: 'Where you both sit',
+                intro: 'Every ideology placed by how similar its stances are. The closer the two markers, the more alike the two results. Tap or hover a dot to see its name.'
+            });
+        }
+
+
+        // ------------------------------------------------------------------------------------------
+        // Compare with one ideology: every answered value against the ideology's score for it
+        // ------------------------------------------------------------------------------------------
+        function silentFirst() {          // the first person's answers, or null (no message)
+            const typed = byId('code-a').value.trim();
+            if (typed) { const code = HVShare.codeFromText(typed); return code ? HVShare.decode(code) : null; }
+            const mine = HV.loadAnswers();
+            return hasValues(mine) ? mine : null;
+        }
+
+        function fillIdeologies() {
+            const answers = silentFirst();
+            const orderBox = byId('ideology-order');
+            orderBox.hidden = byId('ideology-order-label').hidden = !answers;
+            const probability = {};
+            if (answers) HV.rankIdeologies(answers).forEach(item => { probability[item.label] = item.probability; });
+            const filter = byId('ideology-filter').value.trim().toLowerCase();
+            let items = HVInsights.labels.slice();
+            items = answers && orderBox.value === 'fit'
+                ? items.sort((x, y) => (probability[y] || 0) - (probability[x] || 0))
+                : items.sort((x, y) => x.localeCompare(y));
+            const list = byId('ideology-list');
+            const keep = list.value;
+            list.innerHTML = '';
+            items.filter(label => label.toLowerCase().includes(filter)).forEach(label => {
+                const option = el('option', '', answers ? `${label} (${HV.percent(probability[label])})` : label);
+                option.value = label;
+                list.append(option);
+            });
+            if (keep && [...list.options].some(o => o.value === keep)) list.value = keep;
+            byId('ideology-count').textContent = list.options.length === HVInsights.labels.length ? list.options.length : `${list.options.length} of ${HVInsights.labels.length}`;
+
+            const quick = byId('ideology-quick');
+            quick.innerHTML = '';
+            if (answers) {
+                quick.append(el('span', 'compare-hint', 'Your closest:'));
+                HV.closestIdeologies(answers, null, 5).forEach(item => {
+                    const button = el('button', 'ins-more', item.label);
+                    button.type = 'button';
+                    button.onclick = () => { byId('ideology-filter').value = ''; fillIdeologies(); list.value = item.label; run(); };
+                    quick.append(button);
+                });
+            }
+        }
+
+        function setMode(mode) {
+            document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
+            byId('side-person').hidden = mode !== 'person';
+            byId('side-ideology').hidden = mode !== 'ideology';
+            byId('compare-run').textContent = 'Compare';
+            if (mode === 'ideology') fillIdeologies();
+        }
+
+        function runIdeology(options) {
+            const a = resolveSide(byId('code-a').value, true);
+            const label = byId('ideology-list').value;
+            const fail = text => { showError(text); byId('comparison').innerHTML = ''; byId('copy-button').style.display = 'none'; };
+            if (a.error) return fail('First person: ' + a.error);
+            if (!label) return fail('Choose an ideology from the list.');
+            showError('');
+            const nameA = byId('name-a').value.trim() || defaultNames(a.local)[0];
+            current = { codeA: a.code, ideology: label, nameA };
+            if (!options || !options.keepHash) history.replaceState(null, '', '#' + comparisonHash());
+            renderIdeologyComparison(a.answers, label, nameA);
+            byId('copy-button').style.display = '';
+        }
+
+        function renderIdeologyComparison(A, label, nameA) {
+            const host = byId('comparison');
+            host.innerHTML = '';
+            const rows = [];
+            categories.forEach(cat => (A[cat] || []).forEach(item => {
+                const s = HVInsights.score(label, item.value);
+                const agree = Number(item.agree) || 0;
+                const al = HVInsights.alignment(agree, s.score);
+                rows.push({ category: cat, value: item.value, agree, stance: s.score, basis: s.basis, score: al.fit, kind: al.kind, strength: al.strength });
+            }));
+            const align = rows.filter(r => r.kind === 'align').sort((x, y) => y.score - x.score);
+            const conflict = rows.filter(r => r.kind === 'conflict').sort((x, y) => x.score - y.score);
+            const neutral = rows.filter(r => r.kind === 'neutral');
+            const estimated = rows.filter(r => r.basis === 'E').length;
+            const average = rows.length ? rows.reduce((sum, r) => sum + r.score, 0) / rows.length : 0;
+            const ranked = HV.rankIdeologies(A);
+            const place = ranked.findIndex(r => r.label === label);
+            const noteFor = r => `${nameA} ${HV.signed(r.agree)}, ${label} ${HV.signed(r.stance)}${r.basis === 'E' ? ' (estimated)' : ''}, ${r.strength} ${r.kind === 'align' ? 'alignment' : r.kind === 'conflict' ? 'conflict' : 'neutral'}`;
+
+            // ---- overall
+            const overall = section(`${nameA} and ${label}`);
+            overall.append(el('p', 'ins-intro', `Each value ${nameA} answered is compared with ${label}'s score for it. fit = answer × score, both from −1 to +1: above +${HVInsights.BAND.toFixed(2)} aligns, below −${HVInsights.BAND.toFixed(2)} conflicts, in between is neutral. A score marked "estimated" is guessed from similar ideologies, not stated in the definition.`));
+            const scores = el('div', 'compare-score-row');
+            const s1 = el('div', 'compare-score');
+            s1.append(el('div', 'compare-score-number', place >= 0 ? HV.percent(ranked[place].probability) : 'n/a'),
+                el('div', 'compare-score-label', place >= 0 ? `Probability that ${label} is the best match for ${nameA}: rank ${place + 1} of ${ranked.length}.` : 'No ranking is possible without answers.'));
+            const s2 = el('div', 'compare-score');
+            s2.append(el('div', 'compare-score-number', rows.length ? HV.signed(average) : 'None'),
+                el('div', 'compare-score-label', rows.length ? `Average fit over the ${rows.length} value${rows.length === 1 ? '' : 's'} answered (+1.00 full alignment, −1.00 full conflict).` : 'No values answered yet, so there is nothing to compare value by value.'));
+            scores.append(s1, s2);
+            overall.append(scores);
+            if (rows.length) {
+                overall.append(el('p', 'ins-summary', `${align.length} align, ${conflict.length} conflict and ${neutral.length} ${neutral.length === 1 ? 'is' : 'are'} neutral.` + (estimated ? ` ${estimated} of these ${rows.length} scores ${estimated === 1 ? 'is' : 'are'} estimated.` : '')));
+                const columns = el('div', 'ins-columns');
+                columns.append(
+                    HVInsights.chipGroup('Strongest alignments', align.slice(0, 5), noteFor, 'No value aligns with this ideology.', 5),
+                    HVInsights.chipGroup('Strongest conflicts', conflict.slice(0, 5), noteFor, 'No value conflicts with this ideology.', 5));
+                overall.append(columns);
+            }
+            host.append(overall);
+
+            // ---- by category
+            if (rows.length) {
+                const stated = HV.stancesByCategory(label);
+                const byCategory = section('By category', 'Open a category to see its values: which align, which conflict and which are neutral, and the values the ideology states a position on that were not answered (never counted as conflicts).');
+                categories.forEach(cat => {
+                    const inCat = rows.filter(r => r.category === cat);
+                    const answered = new Set(inCat.map(r => r.value));
+                    const notAnswered = (stated[cat] || []).filter(item => !answered.has(item.value)).map(item => ({ category: cat, value: item.value, stance: item.stance }));
+                    if (!inCat.length && !notAnswered.length) return;
+                    const a = inCat.filter(r => r.kind === 'align').sort((x, y) => y.score - x.score);
+                    const c = inCat.filter(r => r.kind === 'conflict').sort((x, y) => x.score - y.score);
+                    const n = inCat.filter(r => r.kind === 'neutral');
+                    const mean = inCat.length ? inCat.reduce((sum, r) => sum + r.score, 0) / inCat.length : null;
+                    const details = el('details', 'compare-cat');
+                    if (c.length) details.open = true;
+                    const summary = el('summary');
+                    summary.append(el('span', 'compare-cat-name', categoryTitles[cat] || cat));
+                    const bar = el('div', 'compare-bar');
+                    bar.setAttribute('role', 'img');
+                    bar.setAttribute('aria-label', mean === null ? 'No value answered' : `Average fit ${HV.signed(mean)}`);
+                    const fill = el('span');
+                    fill.style.width = mean === null ? '0%' : percent((mean + 1) / 2);
+                    bar.append(fill);
+                    summary.append(bar, el('span', 'compare-cat-counts', `${a.length} align, ${c.length} conflict, ${n.length} neutral, ${notAnswered.length} not answered`));
+                    details.append(summary);
+                    const body = el('div', 'compare-cat-body');
+                    if (a.length) body.append(HVInsights.chipGroup('Align', a, noteFor, '', 6));
+                    if (c.length) body.append(HVInsights.chipGroup('Conflict', c, noteFor, '', 6));
+                    if (n.length) body.append(HVInsights.chipGroup('Neutral', n, noteFor, '', 6));
+                    if (notAnswered.length) body.append(HVInsights.chipGroup(`Stated by ${label}, not answered`, notAnswered, r => `${label} ${HV.signed(r.stance)}`, '', 6));
+                    details.append(body);
+                    byCategory.append(details);
+                });
+                host.append(byCategory);
+            }
+
+            // ---- map
+            const mapBox = el('div', 'ins-section');
+            host.append(mapBox);
+            const point = HVInsights.map().points[HVInsights.labels.indexOf(label)];
+            HVInsights.renderMap(mapBox, [{ name: nameA, answers: A }, { name: label, answers: {}, point, label }], {
+                title: `Where ${nameA} and ${label} sit`,
+                intro: 'Every ideology placed by how similar its stances are. The ideology is shown at its own spot; you are placed among your closest matches. Tap or hover a dot to see its name.'
+            });
+        }
+
+        // ------------------------------------------------------------------------------------------
+        byId('compare-run').onclick = () => run();
+        document.querySelectorAll('input[name="mode"]').forEach(radio => { radio.onchange = () => setMode(radio.value); });
+        byId('ideology-filter').oninput = fillIdeologies;
+        byId('ideology-order').onchange = fillIdeologies;
+        byId('code-a').addEventListener('input', () => { if (currentMode() === 'ideology') fillIdeologies(); });
+        byId('ideology-list').onchange = () => run();
+        byId('copy-button').onclick = async () => {
+            const link = location.href.split('#')[0] + '#' + comparisonHash();
+            try {
+                await navigator.clipboard.writeText(link);
+                byId('share-status').textContent = 'Link copied. It opens the same comparison for anyone.';
+            } catch (e) {
+                window.prompt('Copy this link:', link);
+            }
+        };
+
+        // start from the address: #b=CODE compares the saved values with that code, #a=CODE&b=CODE two codes
+        (function start() {
+            const hash = readHash();
+            const aLocal = !hash.a;
+            const [defA, defB] = defaultNames(aLocal);
+            byId('name-a').value = hash.an || defA;
+            byId('name-b').value = hash.bn || defB;
+            byId('name-a').placeholder = defA;
+            byId('name-b').placeholder = defB;
+            if (hash.a) byId('code-a').value = hash.a;
+            if (hash.b) byId('code-b').value = hash.b;
+            if (hash.i || hash.m === 'i') {
+                setMode('ideology');
+                if (hash.i && [...byId('ideology-list').options].some(o => o.value === hash.i)) {
+                    byId('ideology-list').value = hash.i;
+                    run({ keepHash: true });
+                }
+            } else if (hash.b) run({ keepHash: true });
+        })();
+    </script>
+</body>
+</html>

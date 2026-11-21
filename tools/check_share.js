@@ -13,7 +13,7 @@ const ctx = {
     btoa: text => Buffer.from(text, 'binary').toString('base64')
 };
 vm.createContext(ctx);
-['data.js', 'scoring.js', 'share.js', 'insights.js'].forEach(file => {
+['data.js', 'ideology_matrix.js', 'scoring.js', 'share.js', 'insights.js'].forEach(file => {
     vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8').replace(/^const /gm, 'var '), ctx, { filename: file });
 });
 const { HV, HVShare, HVInsights } = ctx;
@@ -85,9 +85,9 @@ let explainOk = true, explainMessage = '';
 labels.forEach(label => {
     const stanceCount = Object.values(HV.stancesByCategory(label)).reduce((n, list) => n + list.length, 0);
     const info = HVInsights.explain(ownAnswers(label), label);
-    if (info.toward.length !== stanceCount || info.away.length || info.missing.length) { explainOk = false; explainMessage = label; }
+    if (info.away.length || info.missing.length || info.toward.length + info.flat.length !== stanceCount) { explainOk = false; explainMessage = label; }
 });
-check(explainOk, 'answering exactly like an ideology: all its values pull toward it, none away, none missing' + (explainMessage ? ' (fails for ' + explainMessage + ')' : ''));
+check(explainOk, 'answering exactly like an ideology: no value pulls away, none is missing, each is toward or neutral' + (explainMessage ? ' (fails for ' + explainMessage + ')' : ''));
 
 let sumsOk = true;
 for (let i = 0; i < 30; i++) {
@@ -96,16 +96,28 @@ for (let i = 0; i < 30; i++) {
     const info = HVInsights.explain(answers, label);
     const listed = Object.values(HV.stancesByCategory(label)).reduce((n, list) => n + list.length, 0);
     const answered = Object.values(answers).reduce((n, list) => n + list.length, 0);
-    if (info.toward.length + info.away.length + info.flat.length + info.missing.length !== listed) sumsOk = false;
-    if (info.toward.length + info.away.length + info.flat.length + info.unlisted.length !== answered) sumsOk = false;
-    if (info.toward.some(r => r.score <= 0) || info.away.some(r => r.score >= 0)) sumsOk = false;
+    const answeredStated = info.toward.concat(info.away, info.flat).filter(r => r.basis === 'S').length;
+    if (info.toward.length + info.away.length + info.flat.length !== answered) sumsOk = false;
+    if (answeredStated + info.missing.length !== listed) sumsOk = false;
+    if (info.toward.some(r => r.score <= HVInsights.BAND) || info.away.some(r => r.score >= -HVInsights.BAND) || info.flat.some(r => Math.abs(r.score) > HVInsights.BAND)) sumsOk = false;
 }
-check(sumsOk, 'explain() accounts for every listed stance and every answer exactly once, with the right signs (30 random cases)');
+check(sumsOk, 'explain() sorts every answered value into toward, away or neutral, keeps unanswered stated values apart, with the right signs (30 random cases)');
 
 const opposite = ownAnswers(labels[0]);
 Object.keys(opposite).forEach(cat => opposite[cat].forEach(item => { item.agree = -item.agree; }));
 const flipped = HVInsights.explain(opposite, labels[0]);
 check(flipped.toward.length === 0 && flipped.away.length > 0, 'answering the opposite of an ideology: every value pulls away');
+
+// the case the explainer must never miss: an answer of +1 against a score of -1 is a strong conflict, an answer of -1 against -1 an alignment
+let strong = null;
+labels.some(label => { const hit = valueIds.find(v => HVInsights.score(label, v).score === -1 && HVInsights.score(label, v).basis === 'S'); if (hit) strong = { label, value: hit }; return !!hit; });
+const conflictRows = HVInsights.explain({ [HV.categoryOf[strong.value]]: [{ value: strong.value, agree: 1 }] }, strong.label);
+check(conflictRows.away.length === 1 && conflictRows.away[0].strength === 'strong' && conflictRows.away[0].score === -1 && conflictRows.toward.length === 0, 'an answer of +1 against an ideology score of -1 is a strong conflict, listed under "pulling away"');
+const agreeRows = HVInsights.explain({ [HV.categoryOf[strong.value]]: [{ value: strong.value, agree: -1 }] }, strong.label);
+check(agreeRows.toward.length === 1 && agreeRows.toward[0].score === 1 && agreeRows.away.length === 0, 'an answer of -1 against a score of -1 is a full alignment');
+check(HVInsights.explain({}, strong.label).away.length === 0 && HVInsights.explain({}, strong.label).missing.length > 0, 'with no answers nothing counts as a conflict; the ideology\'s stated values are listed as not answered');
+const every = HVInsights.ideologyAnswers(strong.label);
+check(Object.values(every).reduce((n, list) => n + list.length, 0) === valueIds.length, 'ideologyAnswers() gives a score for every one of the ' + valueIds.length + ' values');
 
 const diff = HVInsights.differences(randomAnswers(25), labels[3], labels[7]);
 check(diff.aBetter.every(r => r.gap > 0) && diff.bBetter.every(r => r.gap < 0), 'differences() lists each value on the side that fits better');

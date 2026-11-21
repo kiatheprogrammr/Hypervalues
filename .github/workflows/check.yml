@@ -27,5 +27,9 @@ jobs:
         run: node tools/check_pages.js
       - name: Data and ranking
         run: node tools/check_scoring.js
+      - name: Ideology matrix
+        run: node tools/check_matrix.js
       - name: Share links and insights
         run: node tools/check_share.js
+      - name: Custom axes
+        run: node tools/check_axes.js

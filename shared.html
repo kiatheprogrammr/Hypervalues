@@ -33,6 +33,7 @@
     </div>
 
     <script src="data.js"></script>
+    <script src="ideology_matrix.js"></script>
     <script src="scoring.js"></script>
     <script src="share.js"></script>
     <script src="insights.js"></script>
@@ -69,7 +70,7 @@
             const ranked = HVInsights.renderHeadline(byId('results-panel'), shared);
             HVInsights.renderTiles(byId('values-container'), shared);
             if (ranked.length) {
-                HVInsights.renderExplainer(byId('explain-panel'), shared, ranked.slice(0, 4), { who: 'they' });
+                HVInsights.renderExplainer(byId('explain-panel'), shared, ranked.slice(0, 4), { who: 'they', compare: false });
                 HVInsights.renderRadar(byId('radar-panel'), shared, ranked.slice(0, 3), { who: 'they' });
                 HVInsights.renderMap(byId('map-panel'), [{ name: 'Shared', answers: shared }], {
                     youNote: 'The shared result is placed at the center of its five closest ideologies, weighted by how well each fits. '

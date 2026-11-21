@@ -13,7 +13,6 @@
  */
 const HVInsights = (function () {
     const NS = 'http://www.w3.org/2000/svg';
-    const FLAT = 0.05;                       // a fit this close to 0 is neither a pull toward nor away
 
     const labels = [];
     Object.keys(labelMapping).forEach(key => { if (!labels.includes(labelMapping[key])) labels.push(labelMapping[key]); });
@@ -31,51 +30,79 @@ const HVInsights = (function () {
     // ---------------------------------------------------------------------------------------------
     // Why this result
     // ---------------------------------------------------------------------------------------------
-    // fit = your agreement times the ideology's stance (the same number as the rings on the ideology page)
-    function explain(answers, label) {
-        const stances = {};
-        const byCategory = HV.stancesByCategory(label);
-        Object.keys(byCategory).forEach(cat => byCategory[cat].forEach(item => { stances[item.value] = item.stance; }));
+    // ---------------------------------------------------------------------------------------------
+    // The matrix: a score from -1 to +1 for every ideology and every value (ideology_matrix.js)
+    // ---------------------------------------------------------------------------------------------
+    const BAND = 0.1;                    // a fit within this distance of 0 is neutral
+    const MATRIX = typeof IDEOLOGY_MATRIX !== 'undefined' ? IDEOLOGY_MATRIX : null;
+    const matrixIndex = {};
+    if (MATRIX) MATRIX.values.forEach((id, i) => { matrixIndex[id] = i; });
 
-        const toward = [], away = [], flat = [], missing = [], unlisted = [];
-        Object.keys(stances).forEach(value => {
-            const entry = entryOf(answers, value);
-            const category = HV.categoryOf[value];
-            if (!entry) { missing.push({ category, value, stance: stances[value] }); return; }
-            const score = HV.valueScore(value, answers, stances[value]);
-            const row = { category, value, agree: Number(entry.agree) || 0, stance: stances[value], score };
-            if (score > FLAT) toward.push(row); else if (score < -FLAT) away.push(row); else flat.push(row);
-        });
-        const guesses = {};
-        HV.guessedValues(label, Infinity).forEach(g => { guesses[g.value] = g; });
-        Object.keys(answers).forEach(cat => (answers[cat] || []).forEach(item => {
-            if (stances[item.value] === undefined) {
-                unlisted.push({ category: cat, value: item.value, agree: Number(item.agree) || 0, guess: guesses[item.value] ? guesses[item.value].net : 0 });
-            }
-        }));
-        toward.sort((a, b) => b.score - a.score);
-        away.sort((a, b) => a.score - b.score);
-        missing.sort((a, b) => Math.abs(b.stance) - Math.abs(a.stance));
-        return { toward, away, flat, missing, unlisted };
+    // { score, basis }: S stated in the ideology's definition, E estimated from similar ideologies, N none (0), M set by hand
+    function score(label, value) {
+        const row = MATRIX && MATRIX.ideologies[label];
+        const i = matrixIndex[value];
+        if (!row || i === undefined) return { score: 0, basis: 'N' };
+        return { score: row.s[i], basis: row.b[i] };
     }
 
-    // For you, what separates two ideologies: values where `a` fits better than `b`, and the other way round
+    // Your answer against an ideology's score. fit = answer x score, from -1 to +1: above +BAND the value aligns,
+    // below -BAND it conflicts (answer +1 against score -1 is a fit of -1, a strong conflict), otherwise neutral.
+    function alignment(agree, scoreValue) {
+        const fit = Math.max(-1, Math.min(1, (Number(agree) || 0) * (Number(scoreValue) || 0)));
+        const size = Math.abs(fit);
+        return { fit, kind: fit > BAND ? 'align' : fit < -BAND ? 'conflict' : 'neutral', strength: size >= 0.6 ? 'strong' : size >= 0.3 ? 'moderate' : 'slight' };
+    }
+
+    // An ideology written as answers: its score for every value (basis says where each score comes from)
+    function ideologyAnswers(label) {
+        const answers = {};
+        valueIds.forEach(value => {
+            const s = score(label, value);
+            const cat = HV.categoryOf[value];
+            (answers[cat] = answers[cat] || []).push({ value, agree: s.score, basis: s.basis });
+        });
+        return answers;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Why this result: every value you answered against the ideology's score for it
+    // ---------------------------------------------------------------------------------------------
+    function explain(answers, label) {
+        const toward = [], away = [], flat = [], missing = [];
+        const answered = new Set();
+        Object.keys(answers).forEach(cat => (answers[cat] || []).forEach(item => {
+            if (!(item.value in HV.categoryOf)) return;
+            answered.add(item.value);
+            const s = score(label, item.value);
+            const agree = Number(item.agree) || 0;
+            const a = alignment(agree, s.score);
+            const row = { category: HV.categoryOf[item.value], value: item.value, agree, stance: s.score, score: a.fit, basis: s.basis, kind: a.kind, strength: a.strength };
+            (a.kind === 'align' ? toward : a.kind === 'conflict' ? away : flat).push(row);
+        }));
+        // values the ideology states a position on that you have not answered: kept apart, never counted as conflicts
+        const stated = HV.stancesByCategory(label);
+        Object.keys(stated).forEach(cat => stated[cat].forEach(item => {
+            if (!answered.has(item.value)) missing.push({ category: cat, value: item.value, stance: item.stance });
+        }));
+        toward.sort((x, y) => y.score - x.score);
+        away.sort((x, y) => x.score - y.score);
+        flat.sort((x, y) => Math.abs(y.stance) - Math.abs(x.stance));
+        missing.sort((x, y) => Math.abs(y.stance) - Math.abs(x.stance));
+        return { toward, away, flat, missing };
+    }
+
+    // For your answers, what separates two ideologies: values where `a` fits better than `b`, and the other way round
     function differences(answers, a, b) {
-        const stanceOf = label => {
-            const out = {};
-            const byCategory = HV.stancesByCategory(label);
-            Object.keys(byCategory).forEach(cat => byCategory[cat].forEach(item => { out[item.value] = item.stance; }));
-            return out;
-        };
-        const sa = stanceOf(a), sb = stanceOf(b);
         const aBetter = [], bBetter = [];
         Object.keys(answers).forEach(cat => (answers[cat] || []).forEach(item => {
+            if (!(item.value in HV.categoryOf)) return;
             const agree = Number(item.agree) || 0;
-            const fa = Math.max(-1, Math.min(1, agree * (sa[item.value] || 0)));
-            const fb = Math.max(-1, Math.min(1, agree * (sb[item.value] || 0)));
+            const fa = alignment(agree, score(a, item.value).score).fit;
+            const fb = alignment(agree, score(b, item.value).score).fit;
             const gap = fa - fb;
             const row = { category: cat, value: item.value, agree, gap, fitA: fa, fitB: fb };
-            if (gap > FLAT) aBetter.push(row); else if (gap < -FLAT) bBetter.push(row);
+            if (gap > BAND) aBetter.push(row); else if (gap < -BAND) bBetter.push(row);
         }));
         aBetter.sort((x, y) => y.gap - x.gap);
         bBetter.sort((x, y) => x.gap - y.gap);
@@ -150,7 +177,7 @@ const HVInsights = (function () {
             const order = valueIds.map((id, i) => ({ id, loading: a[i] })).sort((x, y) => y.loading - x.loading);
             return { high: order.slice(0, 3).map(o => o.id), low: order.slice(-3).reverse().map(o => o.id) };
         });
-        mapCache = { points, ends, project, mean, V };
+        mapCache = { points, ends, project, mean, V, axes };
         return mapCache;
     }
 
@@ -189,7 +216,7 @@ const HVInsights = (function () {
         };
     }
 
-    return { labels, valueIds, colorOf, entryOf, explain, differences, categoryFit, map, place, overlap, NS, FLAT };
+    return { labels, valueIds, colorOf, entryOf, score, alignment, ideologyAnswers, explain, differences, categoryFit, map, place, overlap, NS, BAND };
 })();
 
 // -------------------------------------------------------------------------------------------------
@@ -265,12 +292,15 @@ const HVInsights = (function () {
         const best = ranked[0];
         const heading = el('h2', 'ins-heading', 'Why this result?');
         const intro = el('p', 'ins-intro', `Each value ${W.subj} added is compared with what an ideology stands for. A value pulls ${W.obj} toward an ideology when ${W.subj} and the ideology lean the same way, and away from it when ${W.subj} lean opposite ways.`);
+        const formula = el('p', 'ins-intro ins-formula');
+        formula.append(el('strong', '', 'How the score works: '),
+            `fit = ${W.poss} answer × the ideology's score for that value, both from −1 to +1. A fit of +1.00 is a strong alignment, −1.00 a strong conflict (for example an answer of +1 against a score of −1), and anything within ±${HVInsights.BAND.toFixed(2)} counts as neutral. A score marked "estimated" is not stated in the ideology's definition but guessed from similar ideologies. The ranking itself uses a fuller probability model; this is a value-by-value reading of the same answers.`);
         const tabs = el('div', 'ins-tabs');
         tabs.setAttribute('role', 'tablist');
         tabs.setAttribute('aria-label', 'Ideology to explain');
         const panel = el('div', 'ins-panel');
         panel.setAttribute('role', 'tabpanel');
-        container.append(heading, intro, tabs, panel);
+        container.append(heading, intro, formula, tabs, panel);
 
         const buttons = [];
         function show(index) {
@@ -289,10 +319,11 @@ const HVInsights = (function () {
                 info.away.length ? ` and ${info.away.length} pull ${W.obj} away from it.` : `, and none pull ${W.obj} away.`);
             panel.append(summary);
 
+            const noteFor = r => `${W.subj} ${HV.signed(r.agree)}, it ${HV.signed(r.stance)}${r.basis === 'E' ? ' (estimated)' : ''}, ${r.strength} ${r.kind === 'align' ? 'alignment' : 'conflict'}`;
             const columns = el('div', 'ins-columns');
             columns.append(
-                chipGroup(`Pulling ${W.obj} toward it`, info.toward, r => `${W.subj} ${HV.signed(r.agree)}, it ${HV.signed(r.stance)}`, `None of ${W.poss} values lean the same way as this ideology.`, 8),
-                chipGroup(`Pulling ${W.obj} away`, info.away, r => `${W.subj} ${HV.signed(r.agree)}, it ${HV.signed(r.stance)}`, `Nothing ${W.subj} added works against this ideology.`, 8)
+                chipGroup(`Pulling ${W.obj} toward it`, info.toward, noteFor, `None of ${W.poss} values lean the same way as this ideology.`, 8),
+                chipGroup(`Pulling ${W.obj} away`, info.away, noteFor, `Nothing ${W.subj} added works against this ideology.`, 8)
             );
             panel.append(columns);
 
@@ -310,8 +341,13 @@ const HVInsights = (function () {
                 const rows = info.missing.slice(0, 8).map(r => Object.assign({}, r, { score: undefined }));
                 panel.append(chipGroup(`Values it holds that ${W.subj} have not added`, rows, r => `it ${HV.signed(r.stance)}`, '', 8));
             }
-            if (info.unlisted.length) {
-                panel.append(el('p', 'ins-note', `${info.unlisted.length} of ${W.poss} values are not part of this ideology's definition, so they neither help nor hurt this match directly.`));
+            if (info.flat.length) {
+                panel.append(el('p', 'ins-note', `${info.flat.length} of ${W.poss} answered values ${info.flat.length === 1 ? 'is' : 'are'} neutral for this ideology (fit within ±${HVInsights.BAND.toFixed(2)}).`));
+            }
+            if (!options || options.compare !== false) {
+                const open = el('a', 'ins-linkbtn', `Compare ${W.obj} with ${item.label} value by value`);
+                open.href = `compare.html#i=${encodeURIComponent(item.label)}`;
+                panel.append(open);
             }
         }
 
@@ -418,7 +454,7 @@ const HVInsights = (function () {
 
         const m = HVInsights.map();
         const W = 640, H = 440, pad = 34;
-        const marks = people.map(p => ({ name: p.name, xy: HVInsights.place(p.answers), top: HV.rankIdeologies(p.answers).slice(0, 3).map(r => r.label) }));
+        const marks = people.map(p => ({ name: p.name, xy: p.point || HVInsights.place(p.answers), top: p.point ? (p.label ? [p.label] : []) : HV.rankIdeologies(p.answers).slice(0, 3).map(r => r.label) }));
         const xs = m.points.map(p => p[0]).concat(marks.map(k => k.xy[0]));
         const ys = m.points.map(p => p[1]).concat(marks.map(k => k.xy[1]));
         const lo = [Math.min.apply(null, xs), Math.min.apply(null, ys)];

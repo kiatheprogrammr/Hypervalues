@@ -1330,6 +1330,8 @@ a:hover {
 }
 
 .compare-side input[type="text"],
+.compare-side input[type="search"],
+.compare-side select,
 .compare-side textarea {
     padding: 12px 14px;
     border: 1px solid var(--border-color);
@@ -1500,4 +1502,216 @@ a:hover {
 
 @media (hover: none) {
     .kb-hint { display: none; }
+}
+
+.ins-formula {
+    padding: 12px 16px;
+    border-left: 3px solid var(--border-color);
+    font-size: 0.92rem;
+}
+
+.ins-formula strong {
+    color: var(--text-primary);
+}
+
+.ins-linkbtn {
+    display: inline-block;
+    margin-top: 18px;
+    padding: 9px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-primary);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.ins-linkbtn:hover {
+    border-color: var(--text-dim);
+}
+
+.compare-mode {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.compare-mode legend {
+    margin-bottom: 8px;
+    padding: 0;
+    font-weight: 700;
+}
+
+.compare-mode label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+}
+
+.compare-side[hidden], .compare-side [hidden], #ideology-order[hidden] {
+    display: none;
+}
+
+.compare-side select[size] {
+    min-height: 190px;
+}
+
+.compare-quick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ---------- Custom axes (axes.js) ---------- */
+.axes-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+    max-width: 900px;
+    margin-top: 22px;
+}
+
+.axes-card {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 18px 24px 22px;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--card-bg);
+}
+
+.axes-legend {
+    padding: 0 8px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.axes-field,
+.axes-pick,
+.axes-inspect {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.axes-field label,
+.axes-pick label,
+.axes-inspect label {
+    font-weight: 700;
+}
+
+.axes-field input,
+.axes-pick input,
+.axes-pick select,
+.axes-inspect select {
+    padding: 11px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+.axes-ends {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+}
+
+@media (max-width: 700px) {
+    .axes-ends { grid-template-columns: 1fr; }
+    .axes-card { padding: 16px 14px 20px; }
+}
+
+.axes-values {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.axes-value {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.2fr) minmax(140px, 1fr) minmax(120px, 1.1fr) auto;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-color);
+}
+
+@media (max-width: 700px) {
+    .axes-value { grid-template-columns: 1fr; }
+}
+
+.axes-value input[type="range"] {
+    width: 100%;
+}
+
+.axes-weight {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+
+.axes-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.axes-near {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    text-align: left;
+}
+
+.axes-near:hover {
+    transform: none;
+}
+
+.axes-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 8px;
+}
+
+.axes-table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.axes-table th,
+.axes-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.axes-table th {
+    color: var(--text-dim);
+    font-weight: 700;
+}
+
+.axes-foot th,
+.axes-foot td {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ins-axis-title {
+    font-weight: 700;
 }

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom axes - HyperValues</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <script src="theme.js"></script>
+    <script src="linebreak.js"></script>
+</head>
+<body>
+    <div class="main-container">
+        <h1>Custom axes</h1>
+        <p class="share-note">Build up to two axes of your own. Give each a label, name its two ends, and choose the values that define it, with a weight from −1 to +1 for each. Every ideology and you are then placed with the same calculation, shown value by value below the map. Your axes are saved in this browser.</p>
+
+        <div id="axes-editor" class="axes-editor"></div>
+        <div id="axes-chart" style="width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
+
+        <div class="button-container">
+            <button onclick="location.href='results.html'">Back to my results</button>
+            <button onclick="location.href='index.html'">Back to menu</button>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="ideology_matrix.js"></script>
+    <script src="scoring.js"></script>
+    <script src="insights.js"></script>
+    <script src="axes.js"></script>
+    <script>
+        HVAxes.render({
+            editor: document.getElementById('axes-editor'),
+            chart: document.getElementById('axes-chart'),
+            answers: HV.loadAnswers()
+        });
+    </script>
+</body>
+</html>

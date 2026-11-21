@@ -13,6 +13,16 @@
         <h1>Changelog</h1>
 
         <div class="description-box">
+            <h3>3.15.0 - 21.11.2026</h3>
+            <ul>
+                <li>Every ideology now has a score for every value: a complete matrix of 266 ideologies by 154 values (ideology_matrix.js), each score from -1 (strongly opposes) to +1 (strongly supports), 0 for neutral or not clearly defined. Stances stated in an ideology's definition are used as they are; where an ideology says nothing about a value, the score is an estimate taken from similar ideologies, limited to +-0.5 so a guess never looks like a stated position, and marked "estimated" wherever it is shown. A new check (tools/check_matrix.js) fails on a missing pair, a score outside -1 to +1, or a stated score that differs from the definition.</li>
+                <li>"Why this result?" now compares every value you answered with the ideology's score for it, using one calculation: fit = your answer x its score. An answer of +1 against a score of -1 is a strong conflict and is listed under "Pulling you away" for every ideology shown; values you did not answer are never counted as conflicts and are listed separately. The panel explains the score, marks estimated scores, and links to the detailed comparison.</li>
+                <li>Compare now also works with any ideology. On the Compare page choose "An ideology" and browse all 266 (filter, order by fit or A to Z, quick buttons for your closest), and see which of your answered values align, conflict or are neutral, by category, with your position and the ideology's on the map. The comparison has its own link.</li>
+                <li>New Custom axes page (also in the menu): build up to two map axes of your own with a label, a name for each end, and any values with a weight from -1 to +1 (negative moves toward the low end). You and all ideologies are placed with position = sum(weight x score) / sum(|weight|) from the same scores, and the page shows the calculation value by value for you and for any ideology you select. Axes can start from the existing map's axes and are saved in your browser. The original map stays on the results page.</li>
+            </ul>
+        </div>
+
+        <div class="description-box">
             <h3>3.14.0 - 21.11.2026</h3>
             <ul>
                 <li>New "Why this result?" panel on the results page. Pick the best match or one of the next closest ones to see which of your values pull you toward it and which pull you away, the values it holds that you have not added, and, for the closer ones, what separates them from your best match.</li>

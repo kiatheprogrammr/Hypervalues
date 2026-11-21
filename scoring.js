@@ -9,11 +9,12 @@
 // For an ideology j:
 //   - a value j has a stance on: your answer is that stance plus noise (normal, width tau);
 //   - a value j has no stance on: you added something it never mentions, which is less likely (probability
-//     epsilon_eff = epsilon ^ (m0 / max(m, m0)), where m is how many values you answered and m0 = 10: with 10
-//     answers or fewer it is epsilon itself, with more answers the penalty per value gets softer, so a long answer
-//     set is not punished again and again for the values an ideology does not list). The stances in data.js are
-//     not complete, so for every value j does not list the page works out how likely j is to support or oppose it,
-//     and how strongly (see "Guesses" below); an answer close to a likely guess costs less. A neutral answer on such a value costs nothing: an ideology that never mentions a value is not
+//     epsilon_eff = epsilon ^ (m0 / max(m, m0)), where m is how many values you answered and m0 = 10, so up to
+//     10 answers it is plain epsilon and with more answers each such value costs less; otherwise a detailed
+//     answer set would be punished again for every value, by a factor that compounds with m, and an ideology
+//     with few listed stances would lose to one with many). The stances in data.js are not complete, so for every value j does not list the page works out how
+//     likely j is to support or oppose it, and how strongly (see "Guesses" below); an answer close to a likely guess
+//     costs less. A neutral answer on such a value costs nothing: an ideology that never mentions a value is not
 //     contradicted by someone who is neutral about it;
 //   - which of j's stances you chose to answer: an ideology that lists few values and matches all of them
 //     explains your answers better than one that lists many (the log of the number of possible choices).
@@ -212,12 +213,11 @@ const HV = (function () {
     // ---------------------------------------------------------------------------------------------
 
     // tau: width of the noise around a stance; epsilon: chance of adding a value an ideology never mentions
+    // (softened once you answer more than M0 values: epsilon ^ (M0 / max(m, M0)), see rankIdeologies)
     // (more when the guesses say the ideology would support or oppose it); guessScale: how much of the guessed
     // chance is believed; guessWidth: how far an answer may be from the guessed stance. The model averages over all
-    // combinations of tau and epsilon. epsilonKnee (m0): up to that many answers epsilon is used as it is; with m
-    // answers it becomes epsilon ^ (m0 / max(m, m0)), so a long answer set is not punished again for every value
-    // an ideology does not list. The numbers come from simulated answers, not from real people.
-    const BAYES = { taus: [0.15, 0.3, 0.6, 0.9], epsilons: [0.01, 0.05], guessScale: 0.25, guessWidth: 0.6, epsilonKnee: 10 };
+    // combinations of tau and epsilon. The numbers come from simulated answers, not from real people.
+    const BAYES = { taus: [0.15, 0.3, 0.6, 0.9], epsilons: [0.01, 0.05], guessScale: 0.25, guessWidth: 0.6, epsilonBase: 10 };
 
 
     // ---------------------------------------------------------------------------------------------
@@ -282,8 +282,7 @@ const HV = (function () {
     // plus[j][i] / minus[j][i]: the chance that ideology j supports / opposes value i, for the values it does not list
     function pooledGuesses(labels, V, stance) {
         const N = labels.length;
-        // the names in parentheses (and "against") that end a clause of a definition are not part of the text
-        const text = labels.map(label => label.replace(/-/g, ' ') + ' . ' + (((typeof descriptions !== 'undefined' && descriptions[label]) || '').replace(/\s*\([^)]*\)/g, '')));
+        const text = labels.map(label => label.replace(/-/g, ' ') + ' . ' + ((typeof descriptions !== 'undefined' && descriptions[label]) || ''));
         const sim = textSimilarity(text);
         const neighbours = labels.map((_, j) => {
             const order = [];
@@ -390,9 +389,9 @@ const HV = (function () {
         }));
         const { labels, N, stance, listed, plus, minus, typicalPlus, typicalMinus, logFactorial } = model;
         const taus = BAYES.taus;
-        const m = given.length;
-        const epsilonPower = BAYES.epsilonKnee / Math.max(m, BAYES.epsilonKnee);
-        const epsilons = BAYES.epsilons.map(epsilon => Math.pow(epsilon, epsilonPower));
+        // epsilon_eff = epsilon ^ (m0 / max(m, m0)): unchanged for up to m0 answers, softer for more
+        const exponent = BAYES.epsilonBase / Math.max(given.length, BAYES.epsilonBase);
+        const epsilons = BAYES.epsilons.map(epsilon => Math.pow(epsilon, exponent));
         const widths = taus.map(tau => tau * tau + BAYES.guessWidth * BAYES.guessWidth);
         const rank = new Array(N);
         const silent = new Float64Array(taus.length * epsilons.length);

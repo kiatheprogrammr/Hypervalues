@@ -130,6 +130,29 @@ labels.slice(0, 60).forEach((label, index) => {
 check(silentChecked > 0 && silentMoved === 0, 'a neutral answer leaves every ideology that never mentions the value unchanged (' + silentChecked + ' cases)');
 check(strongChecked > 0 && strongDropped === strongChecked, 'a neutral answer lowers an ideology that holds the value at 0.9 or more (' + strongDropped + ' of ' + strongChecked + ' cases)');
 
+// 5b. Detailed users: the penalty for answering values an ideology does not list must not compound with the
+// number of answers (epsilon is softened above 10 answers). Ideologies with few listed stances, answered in full and
+// then with 30 more related values, must still come out first for most of them. (Before the fix: 37% with 30 extra
+// answers; after: 57%.)
+{
+    let hits = 0, total = 0;
+    labels.forEach(label => {
+        const byCategory = HV.stancesByCategory(label);
+        const count = Object.values(byCategory).reduce((n, list) => n + list.length, 0);
+        if (count === 0 || count > 12) return;
+        const answers = {};
+        Object.keys(byCategory).forEach(cat => { answers[cat] = byCategory[cat].map(item => ({ value: item.value, agree: item.stance })); });
+        HV.guessedValues(label, 30).forEach(g => {
+            const cat = categoryOf[g.value];
+            (answers[cat] = answers[cat] || []).push({ value: g.value, agree: 0.7 * g.direction });
+        });
+        total++;
+        if (HV.rankIdeologies(answers)[0].label === label) hits++;
+    });
+    const share = total ? hits / total : 0;
+    check(total > 100 && share >= 0.5, 'ideologies with at most 12 listed stances, answered in full plus 30 related values: own ideology first for ' + (share * 100).toFixed(1) + '% of ' + total + ' (at least 50%)');
+}
+
 // 6. Speed
 const started = Date.now();
 for (let i = 0; i < 50; i++) HV.rankIdeologies(answersFrom(strongest(8)(labels[i % labels.length])));

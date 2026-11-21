@@ -47,7 +47,10 @@ function renderNode(node) {
   currentNodeId = node.id;
   const buttonsDiv = document.getElementById('buttons');
   buttonsDiv.innerHTML = '';
-  document.getElementById('question').innerText = node.text || "";
+  const questionEl = document.getElementById('question');
+  questionEl.innerText = node.text || "";
+  questionEl.tabIndex = -1;
+  ensureKeyboardHint(buttonsDiv);
 
   if (node.options && node.options.length > 3) {
     buttonsDiv.classList.add('multi-column');
@@ -55,14 +58,40 @@ function renderNode(node) {
     buttonsDiv.classList.remove('multi-column');
   }
 
-  node.options.forEach(opt => {
+  node.options.forEach((opt, index) => {
     const btn = makeButton(opt.text, () => selectOption(opt.next));
     if (opt.color) btn.style.backgroundColor = opt.color;
+    if (index < 9) btn.setAttribute('aria-keyshortcuts', String(index + 1));
     buttonsDiv.appendChild(btn);
   });
 
-  buttonsDiv.appendChild(makeButton(nodeStack.length ? 'Previous Question' : 'Back', previousQuestion));
+  const back = makeButton(nodeStack.length ? 'Previous Question' : 'Back', previousQuestion);
+  back.setAttribute('aria-keyshortcuts', 'ArrowLeft Backspace');
+  buttonsDiv.appendChild(back);
+  questionEl.focus({ preventScroll: true });   // the new question is read out
 }
+
+// a line under the answers that tells keyboard users about the shortcuts (hidden on touch screens)
+function ensureKeyboardHint(buttonsDiv) {
+  if (document.getElementById('keyboard-hint')) return;
+  const hint = document.createElement('p');
+  hint.id = 'keyboard-hint';
+  hint.className = 'kb-hint';
+  hint.textContent = 'Keyboard: press 1 to 9 to choose an answer, Left arrow or Backspace to go back.';
+  buttonsDiv.insertAdjacentElement('afterend', hint);
+}
+
+document.addEventListener('keydown', event => {
+  if (event.ctrlKey || event.metaKey || event.altKey || !currentQuestions[currentNodeId]) return;
+  const buttons = document.querySelectorAll('#buttons button');
+  const options = (currentQuestions[currentNodeId].options || []).length;
+  if (/^[1-9]$/.test(event.key)) {
+    const number = Number(event.key);
+    if (number <= options && buttons[number - 1]) { event.preventDefault(); buttons[number - 1].click(); }
+  } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
+    if (buttons.length) { event.preventDefault(); buttons[buttons.length - 1].click(); }
+  }
+});
 
 function selectOption(nextId) {
   nodeStack.push(currentNodeId);

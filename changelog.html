@@ -13,18 +13,15 @@
         <h1>Changelog</h1>
 
         <div class="description-box">
-            <h3>3.14.1 - 21.11.2026</h3>
+            <h3>3.14.0 - 21.11.2026</h3>
             <ul>
-                <li>The epsilon multiplier is softer for people who answer many values, so they are no longer punished too much: epsilon is now epsilon ^ (10 / max(answers, 10)), the same as before for 10 answers or fewer.</li>
-            </ul>
-        </div>
-
-        <div class="description-box">
-            <h3>3.14 - 21.11.2026</h3>
-            <ul>
-                <li>The definitions of all 266 ideologies are rewritten as prose. Every sentence that says an ideology supports or opposes the idea of a value gives its reason and ends with the name of that value in brackets, for example (Corporatism) or (against Representative Democracy); one pair of brackets can hold two names separated by ";".</li>
-                <li>The brackets and the names in them are left out of the text the model reads, so only the prose is used to find similar ideologies and to guess the stances an ideology does not list.</li>
-                <li>New checks for the definitions: tools/check_definitions.py measures richness, difference from other definitions, agreement with own values, independence from other ideology names, the match between brackets and stances, and whether each stance has a reason; tools/check_utility.js measures whether a definition helps the model when an ideology lists only 3 stances. All numbers come from text and simulation, not from real answers.</li>
+                <li>New "Why this result?" panel on the results page. Pick the best match or one of the next closest ones to see which of your values pull you toward it and which pull you away, the values it holds that you have not added, and, for the closer ones, what separates them from your best match.</li>
+                <li>Share links. "Copy share link" on the results page makes a link that carries your values in its address (about 5 characters per value, no account and no server). The link opens a read-only page with your result, your values, the explanation and the charts, and from there anyone can compare it with their own values or use it as their own. Links keep working when values are added or reordered; a value that no longer exists is skipped.</li>
+                <li>New Compare page (also in the menu). Paste the share link of another person to see how alike you are (ideology overlap and value agreement), the closest ideologies of each, the ideologies that fit both of you and the ones that fit one much better, and every category value by value: where you agree, where you differ and what only one of you answered. The comparison has its own link that opens the same result for anyone.</li>
+                <li>New charts on the results page: fit by category for your three closest ideologies (radar, with a table for screen readers) and a map of all 266 ideologies, with you placed among your closest matches. The map's axes are named after the values that define their ends.</li>
+                <li>Accessibility and themes: a visible focus mark everywhere (including the theme corner), a skip link and a main landmark on every page, the theme button says what it will do, keyboard shortcuts in the quiz (1 to 9 choose an answer, Left arrow or Backspace go back) with each new question read out, sliders announce their value and word, and animations stop for people who ask for reduced motion. The light theme's dim text and the ideology names on outlined bubbles now reach a 4.5:1 contrast in both themes, and the text on colored bubbles is white or near-black, whichever reads better. Without a saved choice the theme now follows the system setting.</li>
+                <li>Automated checks: a GitHub Action runs on every push and pull request (script syntax, JSON files, links to files, the data and ranking checks, and new checks for share links and charts), so a change uploaded from the browser is checked too.</li>
+                <li>The epsilon multiplier in the ranking was adjusted so that detailed users are not penalized unfairly: every value you answer that an ideology does not list used to multiply its likelihood by epsilon again, so the penalty compounded with the number of answers and pushed people who answered many values away from ideologies with few listed stances. Epsilon is now raised to the power 10 / max(m, 10), where m is the number of values you answered. With 10 answers or fewer the result is exactly the same as before; with more, the penalty softens. Nothing else in the model changed.</li>
             </ul>
         </div>
 

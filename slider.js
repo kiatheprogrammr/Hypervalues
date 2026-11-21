@@ -43,9 +43,12 @@ function makeSlider(initial, onChange) {
   input.step = 1;
   input.value = Math.round(initial * 100);
   input.setAttribute('aria-label', 'How much this value matches you, from -1 (opposite) to +1 (match)');
+  const speak = value => input.setAttribute('aria-valuetext', `${HV.signed(value)}, ${sliderWord(value)}`);
+  speak(initial);
   input.oninput = () => {
     const value = Number(input.value) / 100;
     show(value);
+    speak(value);
     onChange(value);
   };
   slider.appendChild(bar);

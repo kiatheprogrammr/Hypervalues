@@ -13,7 +13,7 @@
     <div class="main-container">
         <div class="title-container">
             <h1>HyperValues</h1>
-            <span class="version-text">v3.14.1</span>
+            <span class="version-text">v3.14.0</span>
         </div>
 
         <div id="values-container" class="category-list"></div>
@@ -25,8 +25,17 @@
             </div>
         </div>
 
+        <div id="explain-panel" class="ins-section" style="display: none;"></div>
+        <div id="radar-panel" class="ins-section" style="display: none;"></div>
+        <div id="map-panel" class="ins-section" style="display: none;"></div>
+
         <div class="button-container">
             <button id="clear-button" style="display: none;">Clear all</button>
+            <div id="share-row" class="download-row" style="display: none;">
+                <button id="share-button">Copy share link</button>
+                <button id="compare-button" onclick="location.href='compare.html'">Compare with a friend</button>
+            </div>
+            <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
             <div id="download-row" class="download-row" style="display: none;">
                 <button id="download-button">Download image</button>
                 <select id="image-scale" aria-label="Image size" title="Image size">
@@ -41,6 +50,8 @@
 
     <script src="data.js"></script>
     <script src="scoring.js"></script>
+    <script src="share.js"></script>
+    <script src="insights.js"></script>
     <script src="share_image.js"></script>
     <script>
         let answers = HV.loadAnswers();
@@ -125,11 +136,13 @@
             labelDiv.innerHTML = '';
             closestList.innerHTML = '';
             closestSection.style.display = 'none';
+            ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = 'none'; });
 
             const touched = categories.some(category => answers[category]);
             panel.style.display = touched ? '' : 'none';
             byId('clear-button').style.display = touched ? '' : 'none';
             byId('download-row').style.display = touched ? '' : 'none';
+            byId('share-row').style.display = touched ? '' : 'none';
             if (!touched) return;
 
             const ranked = HV.closestIdeologies(answers, null, 1 + HV.CLOSEST_COUNT);
@@ -138,6 +151,7 @@
 
             labelDiv.className = 'label-bubble';
             labelDiv.style.backgroundColor = best ? (labelColors[best.label] || '#7a7a7a') : '#7a7a7a';
+            labelDiv.style.color = best ? hvInk.onFill((labelColors[best.label] || '#7a7a7a').slice(0, 7)) : '#ffffff';
 
             if (best) {
                 const labelLink = document.createElement('a');
@@ -166,6 +180,8 @@
                     pill.className = 'closest-pill';
                     pill.href = `description.html?id=${encodeURIComponent(match.label)}&type=ideology&compare=1`;
                     pill.style.setProperty('--pill-color', color);
+                    pill.style.setProperty('--pill-ink-dark', hvInk.forDark(color));
+                    pill.style.setProperty('--pill-ink-light', hvInk.forLight(color));
                     pill.title = `Probability ${HV.percent(match.probability)}`;
 
                     const rank = document.createElement('span');
@@ -181,6 +197,13 @@
                     pill.append(rank, ' ', name, ' ', score);
                     closestList.appendChild(pill);
                 });
+            }
+
+            if (best) {
+                ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = ''; });
+                HVInsights.renderExplainer(byId('explain-panel'), answers, ranked.slice(0, 4));
+                HVInsights.renderRadar(byId('radar-panel'), answers, ranked.slice(0, 3));
+                HVInsights.renderMap(byId('map-panel'), [{ name: 'You', answers }]);
             }
         }
 
@@ -209,6 +232,19 @@
             }
             button.textContent = label;
             button.disabled = false;
+        };
+
+        // a link that carries your values in its address, for the shared result page and for comparing
+        byId('share-button').onclick = async () => {
+            const link = HVShare.link('shared.html', answers);
+            const status = byId('share-status');
+            try {
+                await navigator.clipboard.writeText(link);
+                status.textContent = 'Link copied. It contains your values and nothing else.';
+            } catch (e) {
+                status.textContent = '';
+                window.prompt('Copy this link:', link);
+            }
         };
 
         byId('clear-button').onclick = () => {

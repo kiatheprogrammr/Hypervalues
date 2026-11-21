@@ -1,0 +1,2325 @@
+diff --git a/.github/workflows/check.yml b/.github/workflows/check.yml
+new file mode 100644
+index 0000000..d8edcdb
+--- /dev/null
++++ b/.github/workflows/check.yml
+@@ -0,0 +1,31 @@
++name: Checks
++
++# Runs on every push and pull request, so a change uploaded from the browser is checked too
++on:
++  push:
++  pull_request:
++
++jobs:
++  check:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 22
++      - name: Syntax of every script
++        run: |
++          for f in *.js tools/*.js; do
++            node --check "$f" || exit 1
++          done
++      - name: JSON files are valid
++        run: |
++          for f in *.json; do
++            node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f" || exit 1
++          done
++      - name: Pages point at existing files
++        run: node tools/check_pages.js
++      - name: Data and ranking
++        run: node tools/check_scoring.js
++      - name: Share links and insights
++        run: node tools/check_share.js
+diff --git a/changelog.html b/changelog.html
+index 4abbf3b..be10978 100644
+--- a/changelog.html
++++ b/changelog.html
+@@ -12,6 +12,19 @@
+     <div class="main-container">
+         <h1>Changelog</h1>
+ 
++        <div class="description-box">
++            <h3>3.14.0 - 21.11.2026</h3>
++            <ul>
++                <li>New "Why this result?" panel on the results page. Pick the best match or one of the next closest ones to see which of your values pull you toward it and which pull you away, the values it holds that you have not added, and, for the closer ones, what separates them from your best match.</li>
++                <li>Share links. "Copy share link" on the results page makes a link that carries your values in its address (about 5 characters per value, no account and no server). The link opens a read-only page with your result, your values, the explanation and the charts, and from there anyone can compare it with their own values or use it as their own. Links keep working when values are added or reordered; a value that no longer exists is skipped.</li>
++                <li>New Compare page (also in the menu). Paste the share link of another person to see how alike you are (ideology overlap and value agreement), the closest ideologies of each, the ideologies that fit both of you and the ones that fit one much better, and every category value by value: where you agree, where you differ and what only one of you answered. The comparison has its own link that opens the same result for anyone.</li>
++                <li>New charts on the results page: fit by category for your three closest ideologies (radar, with a table for screen readers) and a map of all 266 ideologies, with you placed among your closest matches. The map's axes are named after the values that define their ends.</li>
++                <li>Accessibility and themes: a visible focus mark everywhere (including the theme corner), a skip link and a main landmark on every page, the theme button says what it will do, keyboard shortcuts in the quiz (1 to 9 choose an answer, Left arrow or Backspace go back) with each new question read out, sliders announce their value and word, and animations stop for people who ask for reduced motion. The light theme's dim text and the ideology names on outlined bubbles now reach a 4.5:1 contrast in both themes, and the text on colored bubbles is white or near-black, whichever reads better. Without a saved choice the theme now follows the system setting.</li>
++                <li>Automated checks: a GitHub Action runs on every push and pull request (script syntax, JSON files, links to files, the data and ranking checks, and new checks for share links and charts), so a change uploaded from the browser is checked too.</li>
++                <li>The epsilon multiplier in the ranking was adjusted so that detailed users are not penalized unfairly: every value you answer that an ideology does not list used to multiply its likelihood by epsilon again, so the penalty compounded with the number of answers and pushed people who answered many values away from ideologies with few listed stances. Epsilon is now raised to the power 10 / max(m, 10), where m is the number of values you answered. With 10 answers or fewer the result is exactly the same as before; with more, the penalty softens. Nothing else in the model changed.</li>
++            </ul>
++        </div>
++
+         <div class="description-box">
+             <h3>3.13.1 - 20.11.2026</h3>
+             <ul>
+diff --git a/compare.html b/compare.html
+new file mode 100644
+index 0000000..4e5360f
+--- /dev/null
++++ b/compare.html
+@@ -0,0 +1,282 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Compare - HyperValues</title>
++    <link rel="stylesheet" href="style.css">
++    <link rel="icon" type="image/svg+xml" href="icon.svg">
++    <script src="theme.js"></script>
++    <script src="linebreak.js"></script>
++</head>
++<body>
++    <div class="main-container">
++        <h1>Compare</h1>
++        <p class="share-note">See where two people agree and disagree, by category and by ideology. Paste the share link of the other person; yours is used unless you paste one for the first side too.</p>
++
++        <div class="ins-section" style="margin-top: 20px;">
++            <div class="compare-form">
++                <div class="compare-side">
++                    <label for="name-a">First person</label>
++                    <input id="name-a" type="text" maxlength="24" autocomplete="off">
++                    <label for="code-a">Link or code (optional)</label>
++                    <textarea id="code-a" spellcheck="false" aria-describedby="hint-a"></textarea>
++                    <p id="hint-a" class="compare-hint">Leave empty to use the values saved in this browser.</p>
++                </div>
++                <div class="compare-side">
++                    <label for="name-b">Second person</label>
++                    <input id="name-b" type="text" maxlength="24" autocomplete="off">
++                    <label for="code-b">Link or code</label>
++                    <textarea id="code-b" spellcheck="false" aria-describedby="hint-b"></textarea>
++                    <p id="hint-b" class="compare-hint">Paste the link from "Copy share link" on their results page.</p>
++                </div>
++            </div>
++            <p id="compare-error" class="compare-error" role="alert" style="display: none;"></p>
++            <div class="button-container" style="margin-bottom: 0;">
++                <button id="compare-run">Compare</button>
++            </div>
++        </div>
++
++        <div id="comparison" style="width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
++
++        <div class="button-container">
++            <button id="copy-button" style="display: none;">Copy comparison link</button>
++            <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
++            <button onclick="location.href='results.html'">Back to my results</button>
++            <button onclick="location.href='index.html'">Back to menu</button>
++        </div>
++    </div>
++
++    <script src="data.js"></script>
++    <script src="scoring.js"></script>
++    <script src="share.js"></script>
++    <script src="insights.js"></script>
++    <script>
++        const byId = id => document.getElementById(id);
++        const el = HVInsights.el;
++        const hasValues = answers => categories.some(cat => answers[cat] && answers[cat].length);
++        const percent = x => Math.round(x * 100) + '%';
++        const AGREE_WITHIN = 0.5;       // two answers this close count as agreeing
++
++        let current = null;             // { codeA, codeB, nameA, nameB } of the comparison on screen
++
++        function readHash() {
++            const params = new URLSearchParams(location.hash.slice(1));
++            return { a: params.get('a'), b: params.get('b'), an: params.get('an'), bn: params.get('bn') };
++        }
++
++        function showError(text) {
++            const box = byId('compare-error');
++            box.textContent = text;
++            box.style.display = text ? '' : 'none';
++        }
++
++        // The answers of one side: its pasted link or code, or (first side only) the values saved in this browser
++        function resolveSide(text, isFirst) {
++            const typed = text.trim();
++            if (typed) {
++                const code = HVShare.codeFromText(typed);
++                return code ? { code, answers: HVShare.decode(code), local: false } : { error: 'That link or code could not be read.' };
++            }
++            if (!isFirst) return { error: 'Paste a link or code for the second person.' };
++            const mine = HV.loadAnswers();
++            return hasValues(mine) ? { code: HVShare.encode(mine), answers: mine, local: true } : { error: 'There are no values saved in this browser yet. Take the quiz first, or paste a link for the first person.' };
++        }
++
++        function defaultNames(aLocal) { return aLocal ? ['You', 'Them'] : ['Person A', 'Person B']; }
++
++        function run(options) {
++            const a = resolveSide(byId('code-a').value, true);
++            const b = resolveSide(byId('code-b').value, false);
++            if (a.error || b.error) {
++                showError(a.error ? 'First person: ' + a.error : 'Second person: ' + b.error);
++                byId('comparison').innerHTML = '';
++                byId('copy-button').style.display = 'none';
++                return;
++            }
++            showError('');
++            const [defA, defB] = defaultNames(a.local);
++            const nameA = byId('name-a').value.trim() || defA;
++            const nameB = byId('name-b').value.trim() || defB;
++            current = { codeA: a.code, codeB: b.code, nameA, nameB };
++            // a link that stays the same for whoever opens it
++            if (!options || !options.keepHash) {
++                history.replaceState(null, '', '#' + comparisonHash());
++            }
++            renderComparison(a.answers, b.answers, nameA, nameB);
++            byId('copy-button').style.display = '';
++        }
++
++        function comparisonHash() {
++            return `a=${current.codeA}&b=${current.codeB}&an=${encodeURIComponent(current.nameA)}&bn=${encodeURIComponent(current.nameB)}`;
++        }
++
++        // ------------------------------------------------------------------------------------------
++        function section(title, intro) {
++            const box = el('section', 'ins-section');
++            box.append(el('h2', 'ins-heading', title));
++            if (intro) box.append(el('p', 'ins-intro', intro));
++            return box;
++        }
++
++        function rankList(items, noteOf) {
++            const list = el('ol', 'compare-rank');
++            items.forEach(item => {
++                const li = el('li');
++                const link = el('a');
++                link.href = `description.html?id=${encodeURIComponent(item.label)}&type=ideology`;
++                const dot = el('span', 'compare-dot');
++                dot.style.backgroundColor = HVInsights.colorOf(item.label);
++                const name = el('span', '', item.label);
++                link.append(dot, name, el('span', 'compare-rank-note', noteOf(item)));
++                li.append(link);
++                list.append(li);
++            });
++            return list;
++        }
++
++        function column(title, content) {
++            const box = el('div');
++            box.append(el('h3', 'ins-group-title', title), content);
++            return box;
++        }
++
++        function renderComparison(A, B, nameA, nameB) {
++            const host = byId('comparison');
++            host.innerHTML = '';
++            const result = HVInsights.overlap(A, B);
++            const probA = {}, probB = {};
++            result.rankedA.forEach(item => { probA[item.label] = item.probability; });
++            result.rankedB.forEach(item => { probB[item.label] = item.probability; });
++            const topA = HV.closestIdeologies(A, null, 5);
++            const topB = HV.closestIdeologies(B, null, 5);
++
++            // ---- overall
++            const overall = section('How alike you are');
++            const scores = el('div', 'compare-score-row');
++            const s1 = el('div', 'compare-score');
++            s1.append(el('div', 'compare-score-number', percent(result.ideology)),
++                el('div', 'compare-score-label', 'Ideology overlap: how much of the probability both results put on the same ideologies.'));
++            const s2 = el('div', 'compare-score');
++            s2.append(el('div', 'compare-score-number', result.values === null ? 'None' : percent(result.values)),
++                el('div', 'compare-score-label', result.values === null
++                    ? 'No value was answered by both people, so there is nothing to compare value by value yet.'
++                    : `Value agreement on the ${result.sharedValues} value${result.sharedValues === 1 ? '' : 's'} both answered (100% means identical answers, 0% opposite ones).`));
++            scores.append(s1, s2);
++            overall.append(scores);
++            if (topA[0] && topB[0]) {
++                overall.append(el('p', 'ins-summary', topA[0].label === topB[0].label
++                    ? `Both of you are closest to ${topA[0].label}.`
++                    : `${nameA} is closest to ${topA[0].label}, ${nameB} to ${topB[0].label}.`));
++            }
++            const tops = el('div', 'compare-top');
++            tops.append(
++                column(`${nameA}'s closest ideologies`, rankList(topA, item => HV.percent(item.probability))),
++                column(`${nameB}'s closest ideologies`, rankList(topB, item => HV.percent(item.probability)))
++            );
++            overall.append(tops);
++            host.append(overall);
++
++            // ---- by ideology
++            const labels = HVInsights.labels;
++            const shared = labels.map(label => ({ label, both: Math.sqrt((probA[label] || 0) * (probB[label] || 0)) }))
++                .sort((x, y) => y.both - x.both).slice(0, 5);
++            const gap = labels.map(label => ({ label, diff: (probA[label] || 0) - (probB[label] || 0) }));
++            const moreA = gap.filter(x => x.diff > 0).sort((x, y) => y.diff - x.diff).slice(0, 3);
++            const moreB = gap.filter(x => x.diff < 0).sort((x, y) => x.diff - y.diff).slice(0, 3);
++            const byIdeology = section('By ideology', 'The ideologies that fit both of you, and the ones that fit one of you much better than the other.');
++            byIdeology.append(el('h3', 'ins-group-title', 'Fit both of you'),
++                rankList(shared, item => `${nameA} ${HV.percent(probA[item.label])}, ${nameB} ${HV.percent(probB[item.label])}`));
++            const split = el('div', 'compare-top');
++            const note = item => `${nameA} ${HV.percent(probA[item.label])}, ${nameB} ${HV.percent(probB[item.label])}`;
++            split.append(column(`Fit ${nameA} much more`, rankList(moreA, note)), column(`Fit ${nameB} much more`, rankList(moreB, note)));
++            byIdeology.append(split);
++            host.append(byIdeology);
++
++            // ---- by category
++            const byCategory = section('By category', 'Open a category to see its values. A value counts as agreed when the two answers are within 0.5 of each other.');
++            categories.forEach(cat => {
++                const listA = A[cat] || [], listB = B[cat] || [];
++                if (!listA.length && !listB.length) return;
++                const rows = {};
++                listA.forEach(item => { rows[item.value] = { a: Number(item.agree) || 0, b: null }; });
++                listB.forEach(item => { (rows[item.value] = rows[item.value] || { a: null, b: null }).b = Number(item.agree) || 0; });
++                const agree = [], differ = [], onlyA = [], onlyB = [];
++                let closeness = 0, counted = 0;
++                Object.keys(rows).forEach(value => {
++                    const row = rows[value];
++                    const base = { category: cat, value };
++                    if (row.a !== null && row.b !== null) {
++                        const distance = Math.abs(row.a - row.b);
++                        closeness += 1 - distance / 2;
++                        counted++;
++                        const item = Object.assign(base, { a: row.a, b: row.b, distance, score: 1 - distance });
++                        (distance <= AGREE_WITHIN ? agree : differ).push(item);
++                    } else if (row.a !== null) onlyA.push(Object.assign(base, { a: row.a }));
++                    else onlyB.push(Object.assign(base, { b: row.b }));
++                });
++                agree.sort((x, y) => x.distance - y.distance);
++                differ.sort((x, y) => y.distance - x.distance);
++
++                const details = el('details', 'compare-cat');
++                if (differ.length) details.open = true;
++                const summary = el('summary');
++                summary.append(el('span', 'compare-cat-name', categoryTitles[cat] || cat));
++                const bar = el('div', 'compare-bar');
++                bar.setAttribute('role', 'img');
++                bar.setAttribute('aria-label', counted ? `Agreement ${percent(closeness / counted)}` : 'No value answered by both');
++                const fill = el('span');
++                fill.style.width = counted ? percent(closeness / counted) : '0%';
++                bar.append(fill);
++                summary.append(bar, el('span', 'compare-cat-counts',
++                    `${agree.length} agree, ${differ.length} differ, ${onlyA.length} only ${nameA}, ${onlyB.length} only ${nameB}`));
++                details.append(summary);
++
++                const body = el('div', 'compare-cat-body');
++                const both = r => `${nameA} ${HV.signed(r.a)}, ${nameB} ${HV.signed(r.b)}`;
++                if (agree.length) body.append(HVInsights.chipGroup('Agree', agree, both, '', 6));
++                if (differ.length) body.append(HVInsights.chipGroup('Differ', differ, both, '', 6));
++                if (onlyA.length) body.append(HVInsights.chipGroup(`Only ${nameA}`, onlyA, r => `${nameA} ${HV.signed(r.a)}`, '', 6));
++                if (onlyB.length) body.append(HVInsights.chipGroup(`Only ${nameB}`, onlyB, r => `${nameB} ${HV.signed(r.b)}`, '', 6));
++                details.append(body);
++                byCategory.append(details);
++            });
++            host.append(byCategory);
++
++            // ---- map
++            const mapBox = el('div', 'ins-section');
++            host.append(mapBox);
++            HVInsights.renderMap(mapBox, [{ name: nameA, answers: A }, { name: nameB, answers: B }], {
++                title: 'Where you both sit',
++                intro: 'Every ideology placed by how similar its stances are. The closer the two markers, the more alike the two results. Tap or hover a dot to see its name.'
++            });
++        }
++
++        // ------------------------------------------------------------------------------------------
++        byId('compare-run').onclick = () => run();
++        byId('copy-button').onclick = async () => {
++            const link = location.href.split('#')[0] + '#' + comparisonHash();
++            try {
++                await navigator.clipboard.writeText(link);
++                byId('share-status').textContent = 'Link copied. It opens the same comparison for anyone.';
++            } catch (e) {
++                window.prompt('Copy this link:', link);
++            }
++        };
++
++        // start from the address: #b=CODE compares the saved values with that code, #a=CODE&b=CODE two codes
++        (function start() {
++            const hash = readHash();
++            const aLocal = !hash.a;
++            const [defA, defB] = defaultNames(aLocal);
++            byId('name-a').value = hash.an || defA;
++            byId('name-b').value = hash.bn || defB;
++            byId('name-a').placeholder = defA;
++            byId('name-b').placeholder = defB;
++            if (hash.a) byId('code-a').value = hash.a;
++            if (hash.b) byId('code-b').value = hash.b;
++            if (hash.b) run({ keepHash: true });
++        })();
++    </script>
++</body>
++</html>
+diff --git a/index.html b/index.html
+index 3e2ce21..39cf766 100644
+--- a/index.html
++++ b/index.html
+@@ -28,6 +28,7 @@
+             <button onclick="location.href='Instruction.html'">Start</button>
+             <button onclick="location.href='values.html'">Values</button>
+             <button onclick="location.href='ideologies.html'">Ideologies</button>
++            <button onclick="location.href='compare.html'">Compare</button>
+             <button onclick="location.href='changelog.html'">Changelog</button>
+             <button onclick="location.href='licpage.html'">License</button>
+         </div>
+diff --git a/insights.js b/insights.js
+new file mode 100644
+index 0000000..b233e33
+--- /dev/null
++++ b/insights.js
+@@ -0,0 +1,580 @@
++/*
++ * Insights built on the ranking in scoring.js: why a result came out as it did, how well each ideology fits you
++ * per category, and a 2D map of all ideologies. Load data.js and scoring.js first (linebreak.js for names).
++ *
++ * Data functions (no page needed, also used by tools/check_share.js):
++ *   HVInsights.explain(answers, label)         values pulling you toward / away from an ideology
++ *   HVInsights.differences(answers, a, b)      values that separate two ideologies for you
++ *   HVInsights.categoryFit(answers, label)     { category: -1..+1 or null }
++ *   HVInsights.map()                           positions of all ideologies on two axes
++ *   HVInsights.place(answers)                  where your answers sit on that map
++ *   HVInsights.overlap(answersA, answersB)     how alike two sets of answers are
++ * Renderers (DOM): renderExplainer, renderRadar, renderMap, renderTiles, renderHeadline.
++ */
++const HVInsights = (function () {
++    const NS = 'http://www.w3.org/2000/svg';
++    const FLAT = 0.05;                       // a fit this close to 0 is neither a pull toward nor away
++
++    const labels = [];
++    Object.keys(labelMapping).forEach(key => { if (!labels.includes(labelMapping[key])) labels.push(labelMapping[key]); });
++    const valueIds = Object.keys(HV.categoryOf);
++    const valueIndex = {};
++    valueIds.forEach((id, i) => { valueIndex[id] = i; });
++
++    const colorOf = label => (labelColors[label] || '#7a7a7a').slice(0, 7);
++
++    function entryOf(answers, value) {
++        const list = answers[HV.categoryOf[value]];
++        return list && list.find(item => item.value === value);
++    }
++
++    // ---------------------------------------------------------------------------------------------
++    // Why this result
++    // ---------------------------------------------------------------------------------------------
++    // fit = your agreement times the ideology's stance (the same number as the rings on the ideology page)
++    function explain(answers, label) {
++        const stances = {};
++        const byCategory = HV.stancesByCategory(label);
++        Object.keys(byCategory).forEach(cat => byCategory[cat].forEach(item => { stances[item.value] = item.stance; }));
++
++        const toward = [], away = [], flat = [], missing = [], unlisted = [];
++        Object.keys(stances).forEach(value => {
++            const entry = entryOf(answers, value);
++            const category = HV.categoryOf[value];
++            if (!entry) { missing.push({ category, value, stance: stances[value] }); return; }
++            const score = HV.valueScore(value, answers, stances[value]);
++            const row = { category, value, agree: Number(entry.agree) || 0, stance: stances[value], score };
++            if (score > FLAT) toward.push(row); else if (score < -FLAT) away.push(row); else flat.push(row);
++        });
++        const guesses = {};
++        HV.guessedValues(label, Infinity).forEach(g => { guesses[g.value] = g; });
++        Object.keys(answers).forEach(cat => (answers[cat] || []).forEach(item => {
++            if (stances[item.value] === undefined) {
++                unlisted.push({ category: cat, value: item.value, agree: Number(item.agree) || 0, guess: guesses[item.value] ? guesses[item.value].net : 0 });
++            }
++        }));
++        toward.sort((a, b) => b.score - a.score);
++        away.sort((a, b) => a.score - b.score);
++        missing.sort((a, b) => Math.abs(b.stance) - Math.abs(a.stance));
++        return { toward, away, flat, missing, unlisted };
++    }
++
++    // For you, what separates two ideologies: values where `a` fits better than `b`, and the other way round
++    function differences(answers, a, b) {
++        const stanceOf = label => {
++            const out = {};
++            const byCategory = HV.stancesByCategory(label);
++            Object.keys(byCategory).forEach(cat => byCategory[cat].forEach(item => { out[item.value] = item.stance; }));
++            return out;
++        };
++        const sa = stanceOf(a), sb = stanceOf(b);
++        const aBetter = [], bBetter = [];
++        Object.keys(answers).forEach(cat => (answers[cat] || []).forEach(item => {
++            const agree = Number(item.agree) || 0;
++            const fa = Math.max(-1, Math.min(1, agree * (sa[item.value] || 0)));
++            const fb = Math.max(-1, Math.min(1, agree * (sb[item.value] || 0)));
++            const gap = fa - fb;
++            const row = { category: cat, value: item.value, agree, gap, fitA: fa, fitB: fb };
++            if (gap > FLAT) aBetter.push(row); else if (gap < -FLAT) bBetter.push(row);
++        }));
++        aBetter.sort((x, y) => y.gap - x.gap);
++        bBetter.sort((x, y) => x.gap - y.gap);
++        return { aBetter, bBetter };
++    }
++
++    // Average fit over the values you answered in a category that the ideology lists; null if there are none
++    function categoryFit(answers, label) {
++        const byCategory = HV.stancesByCategory(label);
++        const result = {};
++        categories.forEach(cat => {
++            let sum = 0, count = 0;
++            (byCategory[cat] || []).forEach(item => {
++                if (!entryOf(answers, item.value)) return;
++                sum += HV.valueScore(item.value, answers, item.stance);
++                count++;
++            });
++            result[cat] = count ? sum / count : null;
++        });
++        return result;
++    }
++
++    // ---------------------------------------------------------------------------------------------
++    // The map: a principal component analysis of the stance table, two axes
++    // ---------------------------------------------------------------------------------------------
++    let mapCache = null;
++    function map() {
++        if (mapCache) return mapCache;
++        const N = labels.length, V = valueIds.length;
++        const rows = labels.map(label => {
++            const row = new Float64Array(V);
++            const byCategory = HV.stancesByCategory(label);
++            Object.keys(byCategory).forEach(cat => byCategory[cat].forEach(item => { row[valueIndex[item.value]] = item.stance; }));
++            return row;
++        });
++        const mean = new Float64Array(V);
++        rows.forEach(row => { for (let i = 0; i < V; i++) mean[i] += row[i] / N; });
++        const centered = rows.map(row => Float64Array.from(row, (x, i) => x - mean[i]));
++
++        // covariance, then the two strongest directions by power iteration (a fixed start, so the map never changes)
++        const cov = Array.from({ length: V }, () => new Float64Array(V));
++        centered.forEach(row => {
++            for (let i = 0; i < V; i++) {
++                if (row[i] === 0) continue;
++                for (let j = 0; j < V; j++) cov[i][j] += row[i] * row[j] / N;
++            }
++        });
++        const axes = [];
++        for (let k = 0; k < 2; k++) {
++            let v = Float64Array.from({ length: V }, (_, i) => 1 + ((i * 7919) % 13) / 13);
++            for (let step = 0; step < 300; step++) {
++                const next = new Float64Array(V);
++                for (let i = 0; i < V; i++) { let sum = 0; for (let j = 0; j < V; j++) sum += cov[i][j] * v[j]; next[i] = sum; }
++                axes.forEach(a => {                                          // stay orthogonal to the first axis
++                    let dot = 0;
++                    for (let i = 0; i < V; i++) dot += next[i] * a[i];
++                    for (let i = 0; i < V; i++) next[i] -= dot * a[i];
++                });
++                let norm = 0;
++                for (let i = 0; i < V; i++) norm += next[i] * next[i];
++                norm = Math.sqrt(norm) || 1;
++                for (let i = 0; i < V; i++) v[i] = next[i] / norm;
++            }
++            let big = 0;                                                     // the sign: the largest loading is positive
++            for (let i = 0; i < V; i++) if (Math.abs(v[i]) > Math.abs(v[big])) big = i;
++            if (v[big] < 0) v = v.map(x => -x);
++            axes.push(v);
++        }
++        const project = row => axes.map(a => { let s = 0; for (let i = 0; i < V; i++) s += (row[i] - mean[i]) * a[i]; return s; });
++        const points = centered.map((_, j) => project(rows[j]));
++        const ends = axes.map(a => {                                         // the values that define each end of an axis
++            const order = valueIds.map((id, i) => ({ id, loading: a[i] })).sort((x, y) => y.loading - x.loading);
++            return { high: order.slice(0, 3).map(o => o.id), low: order.slice(-3).reverse().map(o => o.id) };
++        });
++        mapCache = { points, ends, project, mean, V };
++        return mapCache;
++    }
++
++    // You: the centre of your closest ideologies, weighted by their probability
++    function place(answers, count) {
++        const m = map();
++        const ranked = HV.rankIdeologies(answers).slice(0, count || 5);
++        const total = ranked.reduce((sum, item) => sum + item.probability, 0) || 1;
++        const xy = [0, 0];
++        ranked.forEach(item => {
++            const p = m.points[labels.indexOf(item.label)];
++            xy[0] += p[0] * item.probability / total;
++            xy[1] += p[1] * item.probability / total;
++        });
++        return xy;
++    }
++
++    // How alike two sets of answers are: the overlap of their ideology probabilities (0 to 1) and, on the values both
++    // answered, the average closeness (1 = same answer, 0 = opposite answers)
++    function overlap(a, b) {
++        const ra = HV.rankIdeologies(a), rb = HV.rankIdeologies(b);
++        const pb = {};
++        rb.forEach(item => { pb[item.label] = item.probability; });
++        let ideology = 0;
++        ra.forEach(item => { ideology += Math.sqrt(item.probability * (pb[item.label] || 0)); });
++        const closeness = [];
++        Object.keys(a).forEach(cat => (a[cat] || []).forEach(item => {
++            const other = entryOf(b, item.value);
++            if (other) closeness.push(1 - Math.abs((Number(item.agree) || 0) - (Number(other.agree) || 0)) / 2);
++        }));
++        return {
++            ideology,
++            values: closeness.length ? closeness.reduce((x, y) => x + y, 0) / closeness.length : null,
++            sharedValues: closeness.length,
++            rankedA: ra, rankedB: rb
++        };
++    }
++
++    return { labels, valueIds, colorOf, entryOf, explain, differences, categoryFit, map, place, overlap, NS, FLAT };
++})();
++
++// -------------------------------------------------------------------------------------------------
++// Renderers
++// -------------------------------------------------------------------------------------------------
++(function () {
++    const NS = HVInsights.NS;
++    const colorOf = HVInsights.colorOf;
++
++    function el(tag, className, text) {
++        const node = document.createElement(tag);
++        if (className) node.className = className;
++        if (text !== undefined) node.textContent = text;
++        return node;
++    }
++    function svgEl(tag, attrs) {
++        const node = document.createElementNS(NS, tag);
++        Object.keys(attrs || {}).forEach(key => node.setAttribute(key, attrs[key]));
++        return node;
++    }
++    function putName(node, text) { if (typeof setName === 'function') setName(node, text); else node.textContent = text; }
++    const pct = p => HV.percent(p);
++
++    // ---- a value as a small pill: icon (ringed by fit), name, numbers ---------------------------------
++    function chip(row, extra) {
++        const link = el('a', 'ins-chip');
++        link.href = `description.html?id=${encodeURIComponent(row.value)}&cat=${encodeURIComponent(row.category)}`;
++        const img = el('img', 'ins-chip-icon');
++        img.src = `icons/${row.category}/${row.value}.svg`;
++        img.alt = '';
++        if (row.score !== undefined) img.style.boxShadow = `0 0 0 2px var(--card-bg), 0 0 0 4px ${HV.ringColor(row.score)}`;
++        img.onerror = () => { img.style.display = 'none'; };
++        const text = el('span', 'ins-chip-text');
++        text.append(el('span', 'ins-chip-name', HV.nameOf(row.category, row.value)));
++        if (extra) text.append(el('span', 'ins-chip-note', extra));
++        link.append(img, text);
++        return link;
++    }
++
++    function chipGroup(title, rows, noteOf, emptyText, limit) {
++        const group = el('section', 'ins-group');
++        group.append(el('h3', 'ins-group-title', `${title} (${rows.length})`));
++        if (!rows.length) { group.append(el('p', 'ins-empty', emptyText)); return group; }
++        const list = el('div', 'ins-chips');
++        const draw = all => {
++            list.innerHTML = '';
++            (all ? rows : rows.slice(0, limit)).forEach(row => list.append(chip(row, noteOf(row))));
++            if (!all && rows.length > limit) {
++                const more = el('button', 'ins-more', `Show all ${rows.length}`);
++                more.type = 'button';
++                more.onclick = () => draw(true);
++                list.append(more);
++            }
++        };
++        draw(false);
++        group.append(list);
++        return group;
++    }
++
++    // who: 'you' (default) for your own results, 'they' for a result somebody shared with you
++    function words(options) {
++        return options && options.who === 'they'
++            ? { subj: 'they', obj: 'them', poss: 'their', of: 'of theirs' }
++            : { subj: 'you', obj: 'you', poss: 'your', of: 'of yours' };
++    }
++
++    // ---- why this result -------------------------------------------------------------------------
++    // ranked: the ideologies to explain, best first (each { label, probability })
++    function renderExplainer(container, answers, ranked, options) {
++        container.innerHTML = '';
++        if (!ranked.length) return;
++        const W = words(options);
++        const best = ranked[0];
++        const heading = el('h2', 'ins-heading', 'Why this result?');
++        const intro = el('p', 'ins-intro', `Each value ${W.subj} added is compared with what an ideology stands for. A value pulls ${W.obj} toward an ideology when ${W.subj} and the ideology lean the same way, and away from it when ${W.subj} lean opposite ways.`);
++        const tabs = el('div', 'ins-tabs');
++        tabs.setAttribute('role', 'tablist');
++        tabs.setAttribute('aria-label', 'Ideology to explain');
++        const panel = el('div', 'ins-panel');
++        panel.setAttribute('role', 'tabpanel');
++        container.append(heading, intro, tabs, panel);
++
++        const buttons = [];
++        function show(index) {
++            const item = ranked[index];
++            buttons.forEach((b, i) => {
++                b.setAttribute('aria-selected', i === index ? 'true' : 'false');
++                b.tabIndex = i === index ? 0 : -1;
++            });
++            panel.setAttribute('aria-labelledby', buttons[index].id);
++            panel.innerHTML = '';
++            const info = HVInsights.explain(answers, item.label);
++
++            const summary = el('p', 'ins-summary');
++            summary.append(el('strong', '', item.label), ` fits ${W.obj} at ${pct(item.probability)}. `,
++                `${info.toward.length} of ${W.poss} values pull ${W.obj} toward it`,
++                info.away.length ? ` and ${info.away.length} pull ${W.obj} away from it.` : `, and none pull ${W.obj} away.`);
++            panel.append(summary);
++
++            const columns = el('div', 'ins-columns');
++            columns.append(
++                chipGroup(`Pulling ${W.obj} toward it`, info.toward, r => `${W.subj} ${HV.signed(r.agree)}, it ${HV.signed(r.stance)}`, `None of ${W.poss} values lean the same way as this ideology.`, 8),
++                chipGroup(`Pulling ${W.obj} away`, info.away, r => `${W.subj} ${HV.signed(r.agree)}, it ${HV.signed(r.stance)}`, `Nothing ${W.subj} added works against this ideology.`, 8)
++            );
++            panel.append(columns);
++
++            if (index > 0) {
++                const diff = HVInsights.differences(answers, item.label, best.label);
++                const versus = el('div', 'ins-columns');
++                versus.append(
++                    chipGroup(`Fits you better than ${best.label}`, diff.aBetter.slice(0, 5), r => `fit ${HV.signed(r.fitA)} against ${HV.signed(r.fitB)}`, `No value ${W.of} favors ${item.label} over ${best.label}.`, 5),
++                    chipGroup(`${best.label} fits you better`, diff.bBetter.slice(0, 5), r => `fit ${HV.signed(r.fitB)} against ${HV.signed(r.fitA)}`, `No value ${W.of} favors ${best.label} over ${item.label}.`, 5)
++                );
++                panel.append(el('h3', 'ins-subheading', `What separates it from ${best.label}`), versus);
++            }
++
++            if (info.missing.length) {
++                const rows = info.missing.slice(0, 8).map(r => Object.assign({}, r, { score: undefined }));
++                panel.append(chipGroup(`Values it holds that ${W.subj} have not added`, rows, r => `it ${HV.signed(r.stance)}`, '', 8));
++            }
++            if (info.unlisted.length) {
++                panel.append(el('p', 'ins-note', `${info.unlisted.length} of ${W.poss} values are not part of this ideology's definition, so they neither help nor hurt this match directly.`));
++            }
++        }
++
++        ranked.forEach((item, index) => {
++            const button = el('button', 'ins-tab');
++            button.type = 'button';
++            button.id = `ins-tab-${index}`;
++            button.setAttribute('role', 'tab');
++            button.style.setProperty('--tab-color', colorOf(item.label));
++            button.append(el('span', 'ins-tab-rank', `${index + 1}.`), ' ', el('span', '', item.label));
++            button.onclick = () => show(index);
++            button.onkeydown = event => {
++                const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
++                if (!step) return;
++                event.preventDefault();
++                const next = (index + step + ranked.length) % ranked.length;
++                show(next);
++                buttons[next].focus();
++            };
++            buttons.push(button);
++            tabs.append(button);
++        });
++        show(0);
++    }
++
++    // ---- fit per category (radar) ----------------------------------------------------------------
++    function renderRadar(container, answers, matches, options) {
++        container.innerHTML = '';
++        if (!matches.length) return;
++        const P = words(options);
++        container.append(el('h2', 'ins-heading', 'Fit by category'));
++        container.append(el('p', 'ins-intro', `How well each of ${P.poss} closest ideologies matches the values ${P.subj} added in each category. The outer ring is a full match, the middle ring is neutral, and the center is a full clash. A hollow dot means ${P.subj} have no value in that category that the ideology lists.`));
++
++        const W = 520, H = 440, cx = W / 2, cy = 215, R = 140;
++        const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ins-svg', role: 'img' });
++        const angleOf = k => -Math.PI / 2 + k * 2 * Math.PI / categories.length;
++        const at = (k, r) => [cx + r * Math.cos(angleOf(k)), cy + r * Math.sin(angleOf(k))];
++
++        [0.5, 1].forEach(f => {
++            const ring = svgEl('polygon', { points: categories.map((_, k) => at(k, R * f).join(',')).join(' '), class: f === 0.5 ? 'ins-ring ins-ring-mid' : 'ins-ring' });
++            svg.append(ring);
++        });
++        categories.forEach((cat, k) => {
++            const [x, y] = at(k, R);
++            svg.append(svgEl('line', { x1: cx, y1: cy, x2: x, y2: y, class: 'ins-spoke' }));
++            const [lx, ly] = at(k, R + 18);
++            const cos = Math.cos(angleOf(k));
++            const anchor = Math.abs(cos) < 0.2 ? 'middle' : (cos > 0 ? 'start' : 'end');
++            const words = (categoryTitles[cat] || cat).split(' ');
++            const text = svgEl('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'ins-axis-label', 'dominant-baseline': 'middle' });
++            const lines = words.length > 1 ? [words[0], words.slice(1).join(' ')] : words;
++            lines.forEach((line, i) => {
++                const span = svgEl('tspan', { x: lx, dy: i === 0 ? (lines.length > 1 ? '-0.55em' : '0') : '1.1em' });
++                span.textContent = line;
++                text.append(span);
++            });
++            svg.append(text);
++        });
++        const dashes = ['', '7 4', '2 4'];
++        const table = el('table', 'sr-only');
++        const head = el('tr');
++        head.append(el('th', '', 'Category'));
++        matches.forEach(m => head.append(el('th', '', m.label)));
++        table.append(head);
++        const fits = matches.map(m => HVInsights.categoryFit(answers, m.label));
++        matches.forEach((m, i) => {
++            const pts = categories.map((cat, k) => at(k, R * ((fits[i][cat] === null ? 0 : fits[i][cat]) + 1) / 2));
++            const color = colorOf(m.label);
++            svg.append(svgEl('polygon', { points: pts.map(p => p.join(',')).join(' '), fill: color, 'fill-opacity': '0.14', stroke: color, 'stroke-width': '2.5', 'stroke-dasharray': dashes[i % dashes.length], 'stroke-linejoin': 'round' }));
++            pts.forEach((p, k) => {
++                const none = fits[i][categories[k]] === null;
++                svg.append(svgEl('circle', { cx: p[0], cy: p[1], r: 4, fill: none ? '' : color, stroke: color, 'stroke-width': 2, class: none ? 'ins-hollow' : '' }));
++            });
++        });
++        categories.forEach(cat => {
++            const row = el('tr');
++            row.append(el('th', '', categoryTitles[cat] || cat));
++            fits.forEach(f => row.append(el('td', '', f[cat] === null ? 'no data' : HV.signed(f[cat]))));
++            table.append(row);
++        });
++        svg.setAttribute('aria-label', `Radar chart of how well ${P.poss} closest ideologies fit ${P.obj} in each category. The same numbers are in the table below the chart.`);
++        const wrap = el('div', 'ins-chart');
++        wrap.append(svg);
++        container.append(wrap);
++
++        const legend = el('ul', 'ins-legend');
++        matches.forEach((m, i) => {
++            const item = el('li');
++            const key = svgEl('svg', { width: 34, height: 10, 'aria-hidden': 'true' });
++            key.append(svgEl('line', { x1: 0, y1: 5, x2: 34, y2: 5, stroke: colorOf(m.label), 'stroke-width': 3, 'stroke-dasharray': dashes[i % dashes.length] }));
++            item.append(key, ' ', `${i + 1}. ${m.label}`);
++            legend.append(item);
++        });
++        container.append(legend, table);
++    }
++
++    // ---- the map of all ideologies ---------------------------------------------------------------
++    // people: [{ name, answers }]; one person is "You", two are the two sides of a comparison
++    function renderMap(container, people, options) {
++        container.innerHTML = '';
++        const settings = options || {};
++        container.append(el('h2', 'ins-heading', settings.title || 'Map of ideologies'));
++        container.append(el('p', 'ins-intro', settings.intro || 'Every ideology placed by how similar its stances are: ideologies that hold alike values sit close together. Tap or hover a dot to see its name.'));
++
++        const m = HVInsights.map();
++        const W = 640, H = 440, pad = 34;
++        const marks = people.map(p => ({ name: p.name, xy: HVInsights.place(p.answers), top: HV.rankIdeologies(p.answers).slice(0, 3).map(r => r.label) }));
++        const xs = m.points.map(p => p[0]).concat(marks.map(k => k.xy[0]));
++        const ys = m.points.map(p => p[1]).concat(marks.map(k => k.xy[1]));
++        const lo = [Math.min.apply(null, xs), Math.min.apply(null, ys)];
++        const hi = [Math.max.apply(null, xs), Math.max.apply(null, ys)];
++        const sx = v => pad + (v - lo[0]) / ((hi[0] - lo[0]) || 1) * (W - 2 * pad);
++        const sy = v => H - pad - (v - lo[1]) / ((hi[1] - lo[1]) || 1) * (H - 2 * pad);
++
++        const wrap = el('div', 'ins-chart ins-map-wrap');
++        const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ins-svg ins-map', role: 'img' });
++        svg.setAttribute('aria-label', `Map of ${HVInsights.labels.length} ideologies. ${marks.map(k => `${k.name} sits near ${k.top.join(', ')}.`).join(' ')}`);
++        svg.append(svgEl('rect', { x: 0.5, y: 0.5, width: W - 1, height: H - 1, rx: 14, class: 'ins-map-frame' }));
++
++        const highlighted = new Set();
++        marks.forEach(k => k.top.forEach(label => highlighted.add(label)));
++        HVInsights.labels.forEach((label, j) => {
++            if (highlighted.has(label)) return;
++            svg.append(svgEl('circle', { cx: sx(m.points[j][0]), cy: sy(m.points[j][1]), r: 4, fill: colorOf(label), 'fill-opacity': '0.8', class: 'ins-dot' }));
++        });
++        HVInsights.labels.forEach((label, j) => {
++            if (!highlighted.has(label)) return;
++            const x = sx(m.points[j][0]), y = sy(m.points[j][1]);
++            svg.append(svgEl('circle', { cx: x, cy: y, r: 6.5, fill: colorOf(label), class: 'ins-dot ins-dot-hot' }));
++            const text = svgEl('text', { x: x + 9, y: y - 8, class: 'ins-map-label' });
++            text.textContent = label;
++            svg.append(text);
++        });
++        if (marks.length === 2) {
++            svg.append(svgEl('line', { x1: sx(marks[0].xy[0]), y1: sy(marks[0].xy[1]), x2: sx(marks[1].xy[0]), y2: sy(marks[1].xy[1]), class: 'ins-link' }));
++        }
++        marks.forEach((k, i) => {
++            const x = sx(k.xy[0]), y = sy(k.xy[1]);
++            const shape = i === 0
++                ? svgEl('path', { d: `M${x},${y - 11} L${x + 11},${y} L${x},${y + 11} L${x - 11},${y} Z`, class: 'ins-you' })
++                : svgEl('rect', { x: x - 8.5, y: y - 8.5, width: 17, height: 17, class: 'ins-you ins-you-b' });
++            svg.append(shape);
++            const text = svgEl('text', { x: x + 15, y: y + 18, class: 'ins-you-label' });
++            text.textContent = k.name;
++            svg.append(text);
++        });
++
++        // the nearest dot under the pointer
++        const tip = el('div', 'ins-tip');
++        tip.hidden = true;
++        const tipLink = el('a', 'ins-tip-link');
++        tip.append(tipLink);
++        wrap.append(svg, tip);
++        function nearest(event) {
++            const box = svg.getBoundingClientRect();
++            const px = (event.clientX - box.left) / box.width * W;
++            const py = (event.clientY - box.top) / box.height * H;
++            let best = -1, bestDistance = 14 * 14;
++            m.points.forEach((p, j) => {
++                const d = (sx(p[0]) - px) ** 2 + (sy(p[1]) - py) ** 2;
++                if (d < bestDistance) { bestDistance = d; best = j; }
++            });
++            if (best < 0) { tip.hidden = true; return; }
++            const label = HVInsights.labels[best];
++            tipLink.textContent = label;
++            tipLink.href = `description.html?id=${encodeURIComponent(label)}&type=ideology`;
++            tip.style.borderColor = colorOf(label);
++            tip.hidden = false;
++            const left = sx(m.points[best][0]) / W * box.width;
++            const top = sy(m.points[best][1]) / H * box.height;
++            tip.style.left = Math.min(Math.max(left, 60), box.width - 60) + 'px';
++            tip.style.top = (top - 14) + 'px';
++        }
++        svg.addEventListener('pointermove', event => { if (event.pointerType === 'mouse') nearest(event); });
++        svg.addEventListener('pointerdown', nearest);
++        svg.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse') setTimeout(() => { if (!tip.matches(':hover')) tip.hidden = true; }, 200); });
++        container.append(wrap);
++
++        const name = id => HV.nameOf(HV.categoryOf[id], id);
++        const axisText = (i, axis) => `${axis}: ${m.ends[i].low.map(name).join(', ')} on one end and ${m.ends[i].high.map(name).join(', ')} on the other.`;
++        const caption = el('p', 'ins-caption');
++        caption.append(settings.youNote || (marks.length === 1
++            ? 'You are placed at the center of your five closest ideologies, weighted by how well each fits. '
++            : 'Each person is placed at the center of their five closest ideologies, weighted by how well each fits. '));
++        caption.append(`${axisText(0, 'Left to right')} ${axisText(1, 'Bottom to top')}`);
++        container.append(caption);
++    }
++
++    // ---- read-only views of somebody's answers (shared and compare pages) -------------------------
++    function renderTiles(container, answers) {
++        container.innerHTML = '';
++        categories.forEach(category => {
++            const list = answers[category];
++            if (!list || !list.length) return;
++            const section = el('div', 'category-section');
++            section.append(el('h2', 'category-title', categoryTitles[category] || category));
++            const flex = el('div', 'values-flex-container');
++            list.slice().sort((a, b) => b.agree - a.agree).forEach(item => {
++                const tile = el('a', 'result-item');
++                tile.href = `description.html?id=${encodeURIComponent(item.value)}&cat=${encodeURIComponent(category)}`;
++                tile.style.textDecoration = 'none';
++                tile.style.color = 'inherit';
++                tile.title = `${HV.nameOf(category, item.value)}: ${HV.signed(item.agree)}`;
++                const img = el('img', 'result-icon');
++                img.src = `icons/${category}/${item.value}.svg`;
++                img.alt = '';
++                img.style.borderRadius = '50%';
++                img.style.boxShadow = `0 0 0 3px var(--bg-color), 0 0 0 6px ${HV.ringColor(item.agree)}`;
++                img.onerror = () => { img.style.display = 'none'; };
++                const name = el('p', 'result-text');
++                putName(name, HV.nameOf(category, item.value));
++                tile.append(img, name, el('p', 'result-agree', HV.signed(item.agree)));
++                flex.append(tile);
++            });
++            section.append(flex);
++            container.append(section);
++        });
++    }
++
++    // the best match as a colored bubble, then the closest matches as outlined pills
++    function renderHeadline(container, answers) {
++        container.innerHTML = '';
++        const ranked = HV.closestIdeologies(answers, null, 1 + HV.CLOSEST_COUNT);
++        const best = ranked[0];
++        const bubble = el('div', 'label-bubble');
++        bubble.style.backgroundColor = best ? (labelColors[best.label] || '#7a7a7a') : '#7a7a7a';
++        if (typeof hvInk !== 'undefined' && best) bubble.style.color = hvInk.onFill(colorOf(best.label));
++        if (best) {
++            const link = el('a');
++            link.href = `description.html?id=${encodeURIComponent(best.label)}&type=ideology`;
++            link.style.cssText = 'color: inherit; text-decoration: none; display: block;';
++            const name = el('span');
++            putName(name, best.label);
++            link.append(name, ' ', el('span', 'label-score', `(${pct(best.probability)})`));
++            bubble.append(link);
++        } else {
++            putName(bubble, 'No match');
++        }
++        container.append(bubble);
++        if (ranked.length > 1) {
++            const list = el('div');
++            list.id = 'closest-list';
++            ranked.slice(1).forEach((match, index) => {
++                const pill = el('a', 'closest-pill');
++                pill.href = `description.html?id=${encodeURIComponent(match.label)}&type=ideology`;
++                pill.style.setProperty('--pill-color', colorOf(match.label));
++                if (typeof hvInk !== 'undefined') {
++                    pill.style.setProperty('--pill-ink-dark', hvInk.forDark(colorOf(match.label)));
++                    pill.style.setProperty('--pill-ink-light', hvInk.forLight(colorOf(match.label)));
++                }
++                const name = el('span', 'cp-name');
++                putName(name, match.label);
++                pill.append(el('span', 'cp-rank', `${index + 1}.`), ' ', name, ' ', el('span', 'cp-score', `(${pct(match.probability)})`));
++                list.append(pill);
++            });
++            const section = el('div');
++            section.id = 'closest-section';
++            section.style.display = 'flex';
++            section.append(list);
++            container.append(section);
++        }
++        return ranked;
++    }
++
++    Object.assign(HVInsights, { renderExplainer, renderRadar, renderMap, renderTiles, renderHeadline, chip, chipGroup, el, svgEl });
++})();
+diff --git a/quiz.js b/quiz.js
+index 026b748..8ec0a94 100644
+--- a/quiz.js
++++ b/quiz.js
+@@ -47,7 +47,10 @@ function renderNode(node) {
+   currentNodeId = node.id;
+   const buttonsDiv = document.getElementById('buttons');
+   buttonsDiv.innerHTML = '';
+-  document.getElementById('question').innerText = node.text || "";
++  const questionEl = document.getElementById('question');
++  questionEl.innerText = node.text || "";
++  questionEl.tabIndex = -1;
++  ensureKeyboardHint(buttonsDiv);
+ 
+   if (node.options && node.options.length > 3) {
+     buttonsDiv.classList.add('multi-column');
+@@ -55,15 +58,41 @@ function renderNode(node) {
+     buttonsDiv.classList.remove('multi-column');
+   }
+ 
+-  node.options.forEach(opt => {
++  node.options.forEach((opt, index) => {
+     const btn = makeButton(opt.text, () => selectOption(opt.next));
+     if (opt.color) btn.style.backgroundColor = opt.color;
++    if (index < 9) btn.setAttribute('aria-keyshortcuts', String(index + 1));
+     buttonsDiv.appendChild(btn);
+   });
+ 
+-  buttonsDiv.appendChild(makeButton(nodeStack.length ? 'Previous Question' : 'Back', previousQuestion));
++  const back = makeButton(nodeStack.length ? 'Previous Question' : 'Back', previousQuestion);
++  back.setAttribute('aria-keyshortcuts', 'ArrowLeft Backspace');
++  buttonsDiv.appendChild(back);
++  questionEl.focus({ preventScroll: true });   // the new question is read out
+ }
+ 
++// a line under the answers that tells keyboard users about the shortcuts (hidden on touch screens)
++function ensureKeyboardHint(buttonsDiv) {
++  if (document.getElementById('keyboard-hint')) return;
++  const hint = document.createElement('p');
++  hint.id = 'keyboard-hint';
++  hint.className = 'kb-hint';
++  hint.textContent = 'Keyboard: press 1 to 9 to choose an answer, Left arrow or Backspace to go back.';
++  buttonsDiv.insertAdjacentElement('afterend', hint);
++}
++
++document.addEventListener('keydown', event => {
++  if (event.ctrlKey || event.metaKey || event.altKey || !currentQuestions[currentNodeId]) return;
++  const buttons = document.querySelectorAll('#buttons button');
++  const options = (currentQuestions[currentNodeId].options || []).length;
++  if (/^[1-9]$/.test(event.key)) {
++    const number = Number(event.key);
++    if (number <= options && buttons[number - 1]) { event.preventDefault(); buttons[number - 1].click(); }
++  } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
++    if (buttons.length) { event.preventDefault(); buttons[buttons.length - 1].click(); }
++  }
++});
++
+ function selectOption(nextId) {
+   nodeStack.push(currentNodeId);
+   const node = currentQuestions[nextId];
+diff --git a/results.html b/results.html
+index 1321b39..9248708 100644
+--- a/results.html
++++ b/results.html
+@@ -13,7 +13,7 @@
+     <div class="main-container">
+         <div class="title-container">
+             <h1>HyperValues</h1>
+-            <span class="version-text">v3.13.1</span>
++            <span class="version-text">v3.14.0</span>
+         </div>
+ 
+         <div id="values-container" class="category-list"></div>
+@@ -25,8 +25,17 @@
+             </div>
+         </div>
+ 
++        <div id="explain-panel" class="ins-section" style="display: none;"></div>
++        <div id="radar-panel" class="ins-section" style="display: none;"></div>
++        <div id="map-panel" class="ins-section" style="display: none;"></div>
++
+         <div class="button-container">
+             <button id="clear-button" style="display: none;">Clear all</button>
++            <div id="share-row" class="download-row" style="display: none;">
++                <button id="share-button">Copy share link</button>
++                <button id="compare-button" onclick="location.href='compare.html'">Compare with a friend</button>
++            </div>
++            <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
+             <div id="download-row" class="download-row" style="display: none;">
+                 <button id="download-button">Download image</button>
+                 <select id="image-scale" aria-label="Image size" title="Image size">
+@@ -41,6 +50,8 @@
+ 
+     <script src="data.js"></script>
+     <script src="scoring.js"></script>
++    <script src="share.js"></script>
++    <script src="insights.js"></script>
+     <script src="share_image.js"></script>
+     <script>
+         let answers = HV.loadAnswers();
+@@ -125,11 +136,13 @@
+             labelDiv.innerHTML = '';
+             closestList.innerHTML = '';
+             closestSection.style.display = 'none';
++            ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = 'none'; });
+ 
+             const touched = categories.some(category => answers[category]);
+             panel.style.display = touched ? '' : 'none';
+             byId('clear-button').style.display = touched ? '' : 'none';
+             byId('download-row').style.display = touched ? '' : 'none';
++            byId('share-row').style.display = touched ? '' : 'none';
+             if (!touched) return;
+ 
+             const ranked = HV.closestIdeologies(answers, null, 1 + HV.CLOSEST_COUNT);
+@@ -138,6 +151,7 @@
+ 
+             labelDiv.className = 'label-bubble';
+             labelDiv.style.backgroundColor = best ? (labelColors[best.label] || '#7a7a7a') : '#7a7a7a';
++            labelDiv.style.color = best ? hvInk.onFill((labelColors[best.label] || '#7a7a7a').slice(0, 7)) : '#ffffff';
+ 
+             if (best) {
+                 const labelLink = document.createElement('a');
+@@ -166,6 +180,8 @@
+                     pill.className = 'closest-pill';
+                     pill.href = `description.html?id=${encodeURIComponent(match.label)}&type=ideology&compare=1`;
+                     pill.style.setProperty('--pill-color', color);
++                    pill.style.setProperty('--pill-ink-dark', hvInk.forDark(color));
++                    pill.style.setProperty('--pill-ink-light', hvInk.forLight(color));
+                     pill.title = `Probability ${HV.percent(match.probability)}`;
+ 
+                     const rank = document.createElement('span');
+@@ -182,6 +198,13 @@
+                     closestList.appendChild(pill);
+                 });
+             }
++
++            if (best) {
++                ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = ''; });
++                HVInsights.renderExplainer(byId('explain-panel'), answers, ranked.slice(0, 4));
++                HVInsights.renderRadar(byId('radar-panel'), answers, ranked.slice(0, 3));
++                HVInsights.renderMap(byId('map-panel'), [{ name: 'You', answers }]);
++            }
+         }
+ 
+         function render() {
+@@ -211,6 +234,19 @@
+             button.disabled = false;
+         };
+ 
++        // a link that carries your values in its address, for the shared result page and for comparing
++        byId('share-button').onclick = async () => {
++            const link = HVShare.link('shared.html', answers);
++            const status = byId('share-status');
++            try {
++                await navigator.clipboard.writeText(link);
++                status.textContent = 'Link copied. It contains your values and nothing else.';
++            } catch (e) {
++                status.textContent = '';
++                window.prompt('Copy this link:', link);
++            }
++        };
++
+         byId('clear-button').onclick = () => {
+             if (!confirm('Clear all your values?')) return;
+             answers = {};
+diff --git a/scoring.js b/scoring.js
+index d0d3b59..914acd0 100644
+--- a/scoring.js
++++ b/scoring.js
+@@ -9,7 +9,10 @@
+ // For an ideology j:
+ //   - a value j has a stance on: your answer is that stance plus noise (normal, width tau);
+ //   - a value j has no stance on: you added something it never mentions, which is less likely (probability
+-//     epsilon). The stances in data.js are not complete, so for every value j does not list the page works out how
++//     epsilon_eff = epsilon ^ (m0 / max(m, m0)), where m is how many values you answered and m0 = 10, so up to
++//     10 answers it is plain epsilon and with more answers each such value costs less; otherwise a detailed
++//     answer set would be punished again for every value, by a factor that compounds with m, and an ideology
++//     with few listed stances would lose to one with many). The stances in data.js are not complete, so for every value j does not list the page works out how
+ //     likely j is to support or oppose it, and how strongly (see "Guesses" below); an answer close to a likely guess
+ //     costs less. A neutral answer on such a value costs nothing: an ideology that never mentions a value is not
+ //     contradicted by someone who is neutral about it;
+@@ -210,10 +213,11 @@ const HV = (function () {
+     // ---------------------------------------------------------------------------------------------
+ 
+     // tau: width of the noise around a stance; epsilon: chance of adding a value an ideology never mentions
++    // (softened once you answer more than M0 values: epsilon ^ (M0 / max(m, M0)), see rankIdeologies)
+     // (more when the guesses say the ideology would support or oppose it); guessScale: how much of the guessed
+     // chance is believed; guessWidth: how far an answer may be from the guessed stance. The model averages over all
+     // combinations of tau and epsilon. The numbers come from simulated answers, not from real people.
+-    const BAYES = { taus: [0.15, 0.3, 0.6, 0.9], epsilons: [0.01, 0.05], guessScale: 0.25, guessWidth: 0.6 };
++    const BAYES = { taus: [0.15, 0.3, 0.6, 0.9], epsilons: [0.01, 0.05], guessScale: 0.25, guessWidth: 0.6, epsilonBase: 10 };
+ 
+ 
+     // ---------------------------------------------------------------------------------------------
+@@ -385,7 +389,9 @@ const HV = (function () {
+         }));
+         const { labels, N, stance, listed, plus, minus, typicalPlus, typicalMinus, logFactorial } = model;
+         const taus = BAYES.taus;
+-        const epsilons = BAYES.epsilons;
++        // epsilon_eff = epsilon ^ (m0 / max(m, m0)): unchanged for up to m0 answers, softer for more
++        const exponent = BAYES.epsilonBase / Math.max(given.length, BAYES.epsilonBase);
++        const epsilons = BAYES.epsilons.map(epsilon => Math.pow(epsilon, exponent));
+         const widths = taus.map(tau => tau * tau + BAYES.guessWidth * BAYES.guessWidth);
+         const rank = new Array(N);
+         const silent = new Float64Array(taus.length * epsilons.length);
+diff --git a/share.js b/share.js
+new file mode 100644
+index 0000000..394a98b
+--- /dev/null
++++ b/share.js
+@@ -0,0 +1,90 @@
++/*
++ * Share links: your answers packed into a short code that fits in a URL hash, and back.
++ *   HVShare.encode(answers) -> "AQ..." (url-safe base64)
++ *   HVShare.decode(code)    -> answers ({ category: [{ value, agree }] }) or null if the code is not valid
++ *   HVShare.link(page, answers) -> absolute link such as ".../shared.html#r=AQ..."
++ *   HVShare.codeFromText(text)  -> the code inside a pasted link or a bare code, or null
++ * Needs data.js and scoring.js (HV.categoryOf) to be loaded first.
++ *
++ * Format: 1 version byte, then 4 bytes per value: a 24-bit hash of the value's id (so the code stays valid when
++ * values are added or reordered in data.js) and the agreement in hundredths + 100 (0..200).
++ * tools/check_share.js fails if two values ever get the same hash.
++ */
++const HVShare = (function () {
++    const VERSION = 1;
++
++    // FNV-1a, cut to 24 bits
++    function hashOf(id) {
++        let h = 0x811c9dc5;
++        for (let i = 0; i < id.length; i++) {
++            h ^= id.charCodeAt(i);
++            h = Math.imul(h, 0x01000193);
++        }
++        return (h >>> 0) & 0xffffff;
++    }
++
++    const byHash = {};
++    Object.keys(HV.categoryOf).forEach(id => {
++        const h = hashOf(id);
++        if (byHash[h] === undefined) byHash[h] = id;
++    });
++
++    function toBase64Url(bytes) {
++        let binary = '';
++        bytes.forEach(b => { binary += String.fromCharCode(b); });
++        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
++    }
++
++    function fromBase64Url(text) {
++        const padded = text.replace(/-/g, '+').replace(/_/g, '/');
++        const binary = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
++        return Uint8Array.from(binary, ch => ch.charCodeAt(0));
++    }
++
++    function encode(answers) {
++        const bytes = [VERSION];
++        Object.keys(answers || {}).forEach(category => {
++            (answers[category] || []).forEach(item => {
++                if (!(item.value in HV.categoryOf)) return;
++                const level = Math.max(-1, Math.min(1, Number(item.agree) || 0));
++                const h = hashOf(item.value);
++                bytes.push((h >> 16) & 255, (h >> 8) & 255, h & 255, Math.round(level * 100) + 100);
++            });
++        });
++        return toBase64Url(bytes);
++    }
++
++    function decode(code) {
++        let bytes;
++        try { bytes = fromBase64Url(String(code || '').trim()); } catch (e) { return null; }
++        if (bytes.length < 5 || bytes[0] !== VERSION || (bytes.length - 1) % 4 !== 0) return null;
++        const answers = {};
++        const seen = {};
++        for (let i = 1; i < bytes.length; i += 4) {
++            const h = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
++            const raw = bytes[i + 3];
++            const id = byHash[h];
++            if (!id || raw > 200 || seen[id]) continue;          // unknown value (newer or older data) or repeated: skipped
++            seen[id] = true;
++            const category = HV.categoryOf[id];
++            (answers[category] = answers[category] || []).push({ value: id, agree: (raw - 100) / 100 });
++        }
++        return Object.keys(answers).length ? answers : null;
++    }
++
++    function link(page, answers) {
++        const base = location.href.split('#')[0].replace(/[^/]*$/, '');
++        return base + page + '#r=' + encode(answers);
++    }
++
++    // A pasted link (...#r=CODE, ...#a=CODE, ...#b=CODE) or just the code
++    function codeFromText(text) {
++        const value = String(text || '').trim();
++        if (!value) return null;
++        const match = value.match(/[#&?](?:r|a|b)=([A-Za-z0-9_-]+)/);
++        const code = match ? match[1] : value;
++        return /^[A-Za-z0-9_-]+$/.test(code) && decode(code) ? code : null;
++    }
++
++    return { encode, decode, link, codeFromText, hashOf };
++})();
+diff --git a/shared.html b/shared.html
+new file mode 100644
+index 0000000..a323cff
+--- /dev/null
++++ b/shared.html
+@@ -0,0 +1,104 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Shared result - HyperValues</title>
++    <link rel="stylesheet" href="style.css">
++    <link rel="icon" type="image/svg+xml" href="icon.svg">
++    <script src="theme.js"></script>
++    <script src="linebreak.js"></script>
++</head>
++<body>
++    <div class="main-container">
++        <h1>Shared result</h1>
++        <p id="share-note" class="share-note">Someone shared these values with you. Nothing here is saved in your browser unless you choose to use them as your own.</p>
++        <p id="share-error" class="compare-error" role="alert" style="display: none;"></p>
++
++        <div id="results-panel" class="results-panel"></div>
++        <div id="values-container" class="category-list"></div>
++        <div id="explain-panel" class="ins-section"></div>
++        <div id="radar-panel" class="ins-section"></div>
++        <div id="map-panel" class="ins-section"></div>
++
++        <div class="button-container">
++            <div id="share-actions" class="download-row">
++                <button id="compare-button">Compare with my values</button>
++                <button id="import-button">Use these as my values</button>
++            </div>
++            <button id="copy-button">Copy this link</button>
++            <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
++            <button onclick="location.href='index.html'">Back to menu</button>
++        </div>
++    </div>
++
++    <script src="data.js"></script>
++    <script src="scoring.js"></script>
++    <script src="share.js"></script>
++    <script src="insights.js"></script>
++    <script>
++        const byId = id => document.getElementById(id);
++        const PANELS = ['results-panel', 'values-container', 'explain-panel', 'radar-panel', 'map-panel'];
++
++        function codeFromHash() {
++            const match = location.hash.match(/[#&]r=([A-Za-z0-9_-]+)/);
++            return match ? match[1] : null;
++        }
++
++        function render() {
++            const code = codeFromHash();
++            const shared = code ? HVShare.decode(code) : null;
++            const error = byId('share-error');
++            byId('share-status').textContent = '';
++
++            if (!shared) {
++                error.textContent = code
++                    ? 'This link could not be read. It may be cut off; ask for the link again.'
++                    : 'This page needs a link that carries values. Take the quiz and use "Copy share link" on your results.';
++                error.style.display = '';
++                PANELS.forEach(id => { byId(id).style.display = 'none'; });
++                byId('share-actions').style.display = 'none';
++                byId('copy-button').style.display = 'none';
++                return;
++            }
++            error.style.display = 'none';
++            PANELS.forEach(id => { byId(id).style.display = ''; });
++            byId('share-actions').style.display = '';
++            byId('copy-button').style.display = '';
++
++            const ranked = HVInsights.renderHeadline(byId('results-panel'), shared);
++            HVInsights.renderTiles(byId('values-container'), shared);
++            if (ranked.length) {
++                HVInsights.renderExplainer(byId('explain-panel'), shared, ranked.slice(0, 4), { who: 'they' });
++                HVInsights.renderRadar(byId('radar-panel'), shared, ranked.slice(0, 3), { who: 'they' });
++                HVInsights.renderMap(byId('map-panel'), [{ name: 'Shared', answers: shared }], {
++                    youNote: 'The shared result is placed at the center of its five closest ideologies, weighted by how well each fits. '
++                });
++            } else {
++                ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = 'none'; });
++            }
++            if (typeof fitNames === 'function') fitNames();
++
++            byId('compare-button').onclick = () => { location.href = 'compare.html#b=' + code; };
++            byId('import-button').onclick = () => {
++                const mine = HV.loadAnswers();
++                const hasValues = categories.some(cat => mine[cat] && mine[cat].length);
++                if (hasValues && !confirm('This replaces the values saved in this browser with the shared ones. Continue?')) return;
++                HV.saveAnswers(shared);
++                location.href = 'results.html';
++            };
++            byId('copy-button').onclick = async () => {
++                try {
++                    await navigator.clipboard.writeText(location.href);
++                    byId('share-status').textContent = 'Link copied.';
++                } catch (e) {
++                    window.prompt('Copy this link:', location.href);
++                }
++            };
++        }
++
++        window.addEventListener('hashchange', render);
++        render();
++    </script>
++</body>
++</html>
+diff --git a/slider.js b/slider.js
+index 11bb51f..13463c8 100644
+--- a/slider.js
++++ b/slider.js
+@@ -43,9 +43,12 @@ function makeSlider(initial, onChange) {
+   input.step = 1;
+   input.value = Math.round(initial * 100);
+   input.setAttribute('aria-label', 'How much this value matches you, from -1 (opposite) to +1 (match)');
++  const speak = value => input.setAttribute('aria-valuetext', `${HV.signed(value)}, ${sliderWord(value)}`);
++  speak(initial);
+   input.oninput = () => {
+     const value = Number(input.value) / 100;
+     show(value);
++    speak(value);
+     onChange(value);
+   };
+   slider.appendChild(bar);
+diff --git a/style.css b/style.css
+index b97eef0..d1354f7 100644
+--- a/style.css
++++ b/style.css
+@@ -15,6 +15,7 @@
+     --hover-shadow: rgba(255, 255, 255, 0.1);
+     --corner-fill: #f4f4f5;
+     --corner-color: #18181b;
++    --focus-ring: #7aa7ff;
+     --smooth-transition: all 0.35s cubic-bezier(0.23, 1, 0.32, 1);
+ }
+ 
+@@ -22,7 +23,7 @@
+     --bg-color: #f4f4f6;
+     --card-bg: #ffffff;
+     --text-primary: #18181b;
+-    --text-dim: #71717a;
++    --text-dim: #5b5b64;
+     --accent-primary: #27272a;
+     --accent-soft: #e4e4e7;
+     --border-color: rgba(0, 0, 0, 0.09);
+@@ -31,6 +32,7 @@
+     --hover-shadow: rgba(0, 0, 0, 0.12);
+     --corner-fill: #18181b;
+     --corner-color: #f4f4f6;
++    --focus-ring: #1d4ed8;
+ }
+ 
+ .theme-toggle-corner {
+@@ -58,6 +60,12 @@
+     box-shadow: none;
+ }
+ 
++/* the corner is clipped to a triangle, so its focus ring is a thick edge drawn inside it */
++.theme-toggle-corner:focus-visible svg path:first-child {
++    stroke: var(--focus-ring);
++    stroke-width: 34px;
++}
++
+ .theme-toggle-corner svg {
+     width: 100%;
+     height: 100%;
+@@ -552,7 +560,7 @@ a:hover {
+     border: 2px solid var(--pill-color, #7a7a7a);
+     border-radius: 50px;
+     background-color: transparent;
+-    color: var(--pill-color, #7a7a7a);
++    color: var(--pill-ink-dark, var(--pill-color, #7a7a7a));
+     font-size: 1.1rem;
+     font-weight: 700;
+     text-align: center;
+@@ -564,13 +572,16 @@ a:hover {
+     transition: var(--smooth-transition);
+ }
+ 
++[data-theme="light"] .closest-pill {
++    color: var(--pill-ink-light, var(--pill-color, #7a7a7a));
++}
++
+ .label-score,
+ .cp-score {
+     white-space: nowrap;
+ }
+ 
+ .closest-pill:hover {
+-    color: var(--pill-color, #7a7a7a);
+     text-decoration: none;
+     filter: brightness(1.2);
+ }
+@@ -932,3 +943,561 @@ a:hover {
+     color: var(--text-dim);
+     text-align: center;
+ }
++
++
++/* ---------- Accessibility ---------- */
++:focus-visible {
++    outline: 3px solid var(--focus-ring);
++    outline-offset: 3px;
++}
++
++.main-container:focus {
++    outline: none;
++}
++
++.skip-link {
++    position: fixed;
++    top: 8px;
++    left: 8px;
++    z-index: 10000;
++    padding: 10px 16px;
++    border-radius: var(--radius-sm);
++    background: var(--text-primary);
++    color: var(--bg-color);
++    font-weight: 700;
++    text-decoration: none;
++    transform: translateY(-200%);
++}
++
++.skip-link:focus {
++    transform: none;
++}
++
++.sr-only {
++    position: absolute;
++    width: 1px;
++    height: 1px;
++    margin: -1px;
++    padding: 0;
++    overflow: hidden;
++    clip: rect(0, 0, 0, 0);
++    white-space: nowrap;
++    border: 0;
++}
++
++@media (prefers-reduced-motion: reduce) {
++    *, *::before, *::after {
++        animation-duration: 0.01ms !important;
++        animation-iteration-count: 1 !important;
++        transition-duration: 0.01ms !important;
++        scroll-behavior: auto !important;
++    }
++
++    button:hover {
++        transform: none;
++    }
++}
++
++/* ---------- Insights: why this result, fit by category, map (insights.js) ---------- */
++.ins-section {
++    width: 100%;
++    max-width: 900px;
++    box-sizing: border-box;
++    margin-top: 28px;
++    padding: 24px 28px;
++    background-color: var(--card-bg);
++    border: 1px solid var(--card-border);
++    border-radius: var(--radius-lg);
++    text-align: left;
++}
++
++.ins-heading {
++    margin: 0 0 8px;
++    font-size: 1.5rem;
++    font-weight: 700;
++    color: var(--accent-primary);
++}
++
++.ins-intro,
++.ins-caption,
++.ins-note,
++.ins-empty {
++    margin: 0 0 16px;
++    max-width: 70ch;
++    line-height: 1.6;
++    color: var(--text-dim);
++}
++
++.ins-caption {
++    margin: 14px 0 0;
++    font-size: 0.9rem;
++}
++
++.ins-summary {
++    margin: 16px 0;
++    font-size: 1.1rem;
++    line-height: 1.6;
++}
++
++.ins-tabs {
++    display: flex;
++    flex-wrap: wrap;
++    gap: 8px;
++}
++
++.ins-tab {
++    display: inline-flex;
++    align-items: center;
++    gap: 8px;
++    padding: 9px 16px;
++    font-size: 0.95rem;
++    border-radius: 999px;
++}
++
++.ins-tab::before {
++    content: "";
++    width: 12px;
++    height: 12px;
++    border-radius: 50%;
++    background: var(--tab-color, #7a7a7a);
++    flex: none;
++}
++
++.ins-tab[aria-selected="true"] {
++    border-color: var(--text-primary);
++    background-color: var(--bg-color);
++}
++
++.ins-tab:hover {
++    transform: none;
++}
++
++.ins-tab[aria-selected="true"]:hover {
++    background-color: var(--bg-color);
++    color: var(--text-primary);
++}
++
++.ins-tab-rank {
++    color: var(--text-dim);
++}
++
++.ins-columns {
++    display: grid;
++    grid-template-columns: 1fr 1fr;
++    gap: 8px 28px;
++}
++
++@media (max-width: 700px) {
++    .ins-section { padding: 20px 16px; }
++    .ins-columns { grid-template-columns: 1fr; }
++}
++
++.ins-group-title,
++.ins-subheading {
++    margin: 18px 0 10px;
++    font-size: 1.05rem;
++    font-weight: 700;
++}
++
++.ins-subheading {
++    margin-top: 26px;
++    font-size: 1.15rem;
++    color: var(--accent-primary);
++}
++
++.ins-chips {
++    display: flex;
++    flex-direction: column;
++    align-items: stretch;
++    gap: 8px;
++}
++
++.ins-chip {
++    display: flex;
++    align-items: center;
++    gap: 12px;
++    padding: 8px 14px 8px 10px;
++    border: 1px solid var(--border-color);
++    border-radius: var(--radius-sm);
++    background-color: var(--bg-color);
++    color: var(--text-primary);
++    text-decoration: none;
++}
++
++.ins-chip:hover {
++    border-color: var(--text-dim);
++}
++
++.ins-chip-icon {
++    width: 34px;
++    height: 34px;
++    flex: none;
++    border-radius: 50%;
++    margin: 4px;
++}
++
++.ins-chip-name {
++    display: block;
++    font-weight: 700;
++    line-height: 1.25;
++}
++
++.ins-chip-note {
++    display: block;
++    font-size: 0.85rem;
++    color: var(--text-dim);
++}
++
++.ins-more {
++    align-self: flex-start;
++    padding: 8px 16px;
++    font-size: 0.9rem;
++}
++
++.ins-chart {
++    width: 100%;
++    max-width: 640px;
++    margin: 0 auto;
++}
++
++.ins-svg {
++    display: block;
++    width: 100%;
++    height: auto;
++}
++
++.ins-ring {
++    fill: none;
++    stroke: var(--text-dim);
++    stroke-opacity: 0.35;
++}
++
++.ins-ring-mid {
++    stroke-opacity: 0.6;
++    stroke-dasharray: 3 4;
++}
++
++.ins-spoke {
++    stroke: var(--text-dim);
++    stroke-opacity: 0.3;
++}
++
++.ins-axis-label {
++    fill: var(--text-primary);
++    font-family: inherit;
++    font-size: 13px;
++    font-weight: 500;
++}
++
++.ins-legend {
++    display: flex;
++    flex-wrap: wrap;
++    justify-content: center;
++    gap: 6px 22px;
++    margin: 14px 0 0;
++    padding: 0;
++    list-style: none;
++    font-weight: 500;
++}
++
++.ins-map-wrap {
++    position: relative;
++    max-width: 760px;
++}
++
++.ins-map-frame {
++    fill: var(--bg-color);
++    stroke: var(--border-color);
++}
++
++.ins-dot {
++    cursor: pointer;
++    stroke: var(--text-dim);
++    stroke-opacity: 0.55;
++    stroke-width: 0.8px;
++}
++
++.ins-dot-hot {
++    stroke: var(--text-primary);
++    stroke-opacity: 1;
++    stroke-width: 2px;
++}
++
++.ins-hollow {
++    fill: var(--card-bg);
++}
++
++.ins-map-label {
++    fill: var(--text-primary);
++    font-family: inherit;
++    font-size: 11.5px;
++    font-weight: 700;
++    paint-order: stroke;
++    stroke: var(--bg-color);
++    stroke-width: 3.5px;
++    pointer-events: none;
++}
++
++.ins-you {
++    fill: var(--text-primary);
++    stroke: var(--bg-color);
++    stroke-width: 3px;
++    pointer-events: none;
++}
++
++.ins-you-b {
++    fill: var(--bg-color);
++    stroke: var(--text-primary);
++    stroke-width: 3px;
++}
++
++.ins-you-label {
++    fill: var(--text-primary);
++    font-family: inherit;
++    font-size: 13px;
++    font-weight: 700;
++    paint-order: stroke;
++    stroke: var(--bg-color);
++    stroke-width: 4px;
++    pointer-events: none;
++}
++
++.ins-link {
++    stroke: var(--text-dim);
++    stroke-width: 1.5;
++    stroke-dasharray: 5 4;
++    pointer-events: none;
++}
++
++.ins-tip {
++    position: absolute;
++    z-index: 5;
++    transform: translate(-50%, -100%);
++    padding: 6px 14px;
++    border: 2px solid var(--text-dim);
++    border-radius: 12px;
++    background-color: var(--card-bg);
++    box-shadow: var(--soft-shadow);
++    white-space: nowrap;
++}
++
++.ins-tip[hidden] {
++    display: none;
++}
++
++.ins-tip-link {
++    color: var(--text-primary);
++    font-weight: 700;
++    text-decoration: none;
++}
++
++/* ---------- Shared result and compare pages ---------- */
++.share-note {
++    max-width: 640px;
++    margin: 10px 0 0;
++    text-align: center;
++    line-height: 1.6;
++    color: var(--text-dim);
++}
++
++.share-status {
++    min-height: 1.5em;
++    margin: 0;
++    text-align: center;
++    font-weight: 500;
++    color: var(--text-dim);
++}
++
++.compare-form {
++    display: grid;
++    grid-template-columns: 1fr 1fr;
++    gap: 16px 28px;
++    margin-top: 24px;
++}
++
++@media (max-width: 700px) {
++    .compare-form { grid-template-columns: 1fr; }
++}
++
++.compare-side {
++    display: flex;
++    flex-direction: column;
++    gap: 8px;
++}
++
++.compare-side label {
++    font-weight: 700;
++}
++
++.compare-side input[type="text"],
++.compare-side textarea {
++    padding: 12px 14px;
++    border: 1px solid var(--border-color);
++    border-radius: var(--radius-sm);
++    background-color: var(--bg-color);
++    color: var(--text-primary);
++    font-family: inherit;
++    font-size: 1rem;
++}
++
++.compare-side textarea {
++    min-height: 74px;
++    resize: vertical;
++}
++
++.compare-hint {
++    margin: 0;
++    font-size: 0.9rem;
++    color: var(--text-dim);
++}
++
++.compare-error {
++    margin: 12px 0 0;
++    font-weight: 700;
++    color: #d14343;
++}
++
++[data-theme="light"] .compare-error {
++    color: #b42318;
++}
++
++.compare-score-row {
++    display: grid;
++    grid-template-columns: 1fr 1fr;
++    gap: 16px;
++    margin: 18px 0 8px;
++}
++
++@media (max-width: 700px) {
++    .compare-score-row { grid-template-columns: 1fr; }
++}
++
++.compare-score {
++    padding: 16px 20px;
++    border: 1px solid var(--border-color);
++    border-radius: var(--radius-sm);
++    background-color: var(--bg-color);
++}
++
++.compare-score-number {
++    font-size: 2.2rem;
++    font-weight: 700;
++    line-height: 1.1;
++}
++
++.compare-score-label {
++    margin-top: 4px;
++    line-height: 1.45;
++    color: var(--text-dim);
++}
++
++.compare-top {
++    display: grid;
++    grid-template-columns: 1fr 1fr;
++    gap: 8px 28px;
++}
++
++@media (max-width: 700px) {
++    .compare-top { grid-template-columns: 1fr; }
++}
++
++.compare-rank {
++    display: flex;
++    flex-direction: column;
++    gap: 6px;
++    margin: 0;
++    padding: 0;
++    list-style: none;
++}
++
++.compare-rank a {
++    display: flex;
++    align-items: center;
++    gap: 10px;
++    padding: 8px 14px;
++    border: 1px solid var(--border-color);
++    border-radius: var(--radius-sm);
++    background-color: var(--bg-color);
++    color: var(--text-primary);
++    text-decoration: none;
++    font-weight: 700;
++}
++
++.compare-rank a:hover {
++    border-color: var(--text-dim);
++}
++
++.compare-dot {
++    width: 12px;
++    height: 12px;
++    flex: none;
++    border-radius: 50%;
++}
++
++.compare-rank-note {
++    margin-left: auto;
++    font-size: 0.85rem;
++    font-weight: 500;
++    text-align: right;
++    color: var(--text-dim);
++}
++
++.compare-cat {
++    margin: 10px 0 0;
++    border: 1px solid var(--border-color);
++    border-radius: var(--radius-sm);
++    background-color: var(--bg-color);
++}
++
++.compare-cat > summary {
++    display: grid;
++    grid-template-columns: minmax(130px, 220px) 1fr;
++    align-items: center;
++    gap: 6px 18px;
++    padding: 14px 18px;
++    cursor: pointer;
++    list-style: none;
++}
++
++.compare-cat > summary::-webkit-details-marker {
++    display: none;
++}
++
++.compare-cat-name {
++    font-weight: 700;
++}
++
++.compare-cat-counts {
++    grid-column: 1 / -1;
++    font-size: 0.9rem;
++    color: var(--text-dim);
++}
++
++.compare-bar {
++    height: 10px;
++    border-radius: 999px;
++    background-color: var(--border-color);
++    overflow: hidden;
++}
++
++.compare-bar > span {
++    display: block;
++    height: 100%;
++    border-radius: 999px;
++    background-color: var(--text-primary);
++}
++
++.compare-cat-body {
++    padding: 0 18px 12px;
++}
++
++.kb-hint {
++    margin: 14px 0 0;
++    font-size: 0.85rem;
++    text-align: center;
++    color: var(--text-dim);
++}
++
++@media (hover: none) {
++    .kb-hint { display: none; }
++}
+diff --git a/theme.js b/theme.js
+index 60a5c45..eaed242 100644
+--- a/theme.js
++++ b/theme.js
+@@ -1,15 +1,66 @@
+ (function () {
+-    const savedTheme = localStorage.getItem('nv_theme') || 'dark';
+-    document.documentElement.setAttribute('data-theme', savedTheme);
++    let saved = null;
++    try { saved = localStorage.getItem('nv_theme'); } catch (e) { /* storage is not available */ }
++    // no saved choice: follow the system setting (dark if it cannot be read)
++    const preferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
++    document.documentElement.setAttribute('data-theme', saved === 'light' || saved === 'dark' ? saved : preferred);
+ })();
+ 
++// The label and state of every theme button say what it does now
++function syncThemeButtons() {
++    const light = document.documentElement.getAttribute('data-theme') === 'light';
++    document.querySelectorAll('.theme-toggle-corner').forEach(button => {
++        button.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
++        button.setAttribute('aria-pressed', light ? 'true' : 'false');
++        button.title = light ? 'Switch to dark mode' : 'Switch to light mode';
++    });
++}
++
+ function toggleTheme() {
+     const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+     const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+     document.documentElement.setAttribute('data-theme', newTheme);
+-    localStorage.setItem('nv_theme', newTheme);
++    try { localStorage.setItem('nv_theme', newTheme); } catch (e) { /* storage is not available */ }
++    syncThemeButtons();
+ }
+ 
++// Readable text colors for an ideology's color. Text in the ideology's own color on the page background (outlined
++// pills) is mixed toward white or black until it reaches a 4.5:1 contrast, one color for each theme; text on a
++// filled bubble is white or near-black, whichever contrasts more.
++const hvInk = (function () {
++    const DARK_BG = '#18181b', LIGHT_BG = '#f4f4f6';
++    const parse = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
++    const luminance = rgb => {
++        const [r, g, b] = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
++        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
++    };
++    const contrast = (a, b) => {
++        const x = luminance(a), y = luminance(b);
++        return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
++    };
++    const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
++    const css = rgb => '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
++    function toward(hex, target, background) {
++        if (!/^#[0-9a-f]{6}/i.test(hex || '')) return hex;
++        const color = parse(hex.slice(0, 7)), end = parse(target), bg = parse(background);
++        for (let t = 0; t <= 1.0001; t += 0.05) {
++            const candidate = mix(color, end, t);
++            if (contrast(candidate, bg) >= 4.5) return css(candidate);
++        }
++        return target;
++    }
++    return {
++        forDark: hex => toward(hex, '#ffffff', DARK_BG),
++        forLight: hex => toward(hex, '#000000', LIGHT_BG),
++        onFill: hex => {
++            if (!/^#[0-9a-f]{6}/i.test(hex || '')) return '#ffffff';
++            const color = parse(hex.slice(0, 7));
++            return contrast(color, [255, 255, 255]) >= contrast(color, [24, 24, 27]) ? '#ffffff' : '#18181b';
++        },
++        contrast, parse
++    };
++})();
++
+ window.addEventListener('DOMContentLoaded', () => {
+     if (!document.querySelector('.theme-toggle-corner')) {
+         const toggleBtn = document.createElement('button');
+@@ -32,4 +83,21 @@ window.addEventListener('DOMContentLoaded', () => {
+         `;
+         document.body.prepend(toggleBtn);
+     }
++    syncThemeButtons();
++
++    // landmark and a way past the repeated controls for keyboard and screen reader users
++    const main = document.querySelector('.main-container');
++    if (main) {
++        if (!main.id) main.id = 'main-content';
++        main.setAttribute('role', 'main');
++        main.tabIndex = -1;
++        if (!document.querySelector('.skip-link')) {
++            const skip = document.createElement('a');
++            skip.className = 'skip-link';
++            skip.href = '#' + main.id;
++            skip.textContent = 'Skip to content';
++            skip.addEventListener('click', event => { event.preventDefault(); main.focus(); });
++            document.body.prepend(skip);
++        }
++    }
+ });
+diff --git a/tools/check_pages.js b/tools/check_pages.js
+new file mode 100644
+index 0000000..70cce13
+--- /dev/null
++++ b/tools/check_pages.js
+@@ -0,0 +1,26 @@
++// Checks that every page points at files that exist (scripts, styles, icons, links to other pages):  node tools/check_pages.js
++// Exits with 1 if something is missing.
++const fs = require('fs');
++const path = require('path');
++
++const root = path.join(__dirname, '..');
++const pages = fs.readdirSync(root).filter(name => name.endsWith('.html'));
++let failures = 0;
++let checked = 0;
++
++pages.forEach(page => {
++    const html = fs.readFileSync(path.join(root, page), 'utf8');
++    const refs = new Set();
++    const patterns = [/<script[^>]+src="([^"]+)"/g, /<link[^>]+href="([^"]+)"/g, /<img[^>]+src="([^"]+)"/g, /location\.href='([^']+)'/g, /<a[^>]+href="([^"]+)"/g];
++    patterns.forEach(pattern => { let m; while ((m = pattern.exec(html))) refs.add(m[1]); });
++    refs.forEach(ref => {
++        if (/^(https?:|mailto:|#|data:|javascript:)/.test(ref) || ref.includes('${') || ref === '') return;
++        const file = ref.split('#')[0].split('?')[0];
++        if (!file) return;
++        checked++;
++        if (!fs.existsSync(path.join(root, file))) { failures++; console.log(`FAIL  ${page} refers to ${file}, which does not exist`); }
++    });
++});
++
++console.log(failures ? `\n${failures} missing file(s)` : `ok    ${checked} references in ${pages.length} pages all point at existing files\n\nall checks passed`);
++process.exit(failures ? 1 : 0);
+diff --git a/tools/check_scoring.js b/tools/check_scoring.js
+index f05c796..8b19ee8 100644
+--- a/tools/check_scoring.js
++++ b/tools/check_scoring.js
+@@ -130,6 +130,29 @@ labels.slice(0, 60).forEach((label, index) => {
+ check(silentChecked > 0 && silentMoved === 0, 'a neutral answer leaves every ideology that never mentions the value unchanged (' + silentChecked + ' cases)');
+ check(strongChecked > 0 && strongDropped === strongChecked, 'a neutral answer lowers an ideology that holds the value at 0.9 or more (' + strongDropped + ' of ' + strongChecked + ' cases)');
+ 
++// 5b. Detailed users: the penalty for answering values an ideology does not list must not compound with the
++// number of answers (epsilon is softened above 10 answers). Ideologies with few listed stances, answered in full and
++// then with 30 more related values, must still come out first for most of them. (Before the fix: 37% with 30 extra
++// answers; after: 57%.)
++{
++    let hits = 0, total = 0;
++    labels.forEach(label => {
++        const byCategory = HV.stancesByCategory(label);
++        const count = Object.values(byCategory).reduce((n, list) => n + list.length, 0);
++        if (count === 0 || count > 12) return;
++        const answers = {};
++        Object.keys(byCategory).forEach(cat => { answers[cat] = byCategory[cat].map(item => ({ value: item.value, agree: item.stance })); });
++        HV.guessedValues(label, 30).forEach(g => {
++            const cat = categoryOf[g.value];
++            (answers[cat] = answers[cat] || []).push({ value: g.value, agree: 0.7 * g.direction });
++        });
++        total++;
++        if (HV.rankIdeologies(answers)[0].label === label) hits++;
++    });
++    const share = total ? hits / total : 0;
++    check(total > 100 && share >= 0.5, 'ideologies with at most 12 listed stances, answered in full plus 30 related values: own ideology first for ' + (share * 100).toFixed(1) + '% of ' + total + ' (at least 50%)');
++}
++
+ // 6. Speed
+ const started = Date.now();
+ for (let i = 0; i < 50; i++) HV.rankIdeologies(answersFrom(strongest(8)(labels[i % labels.length])));
+diff --git a/tools/check_share.js b/tools/check_share.js
+new file mode 100644
+index 0000000..8c77047
+--- /dev/null
++++ b/tools/check_share.js
+@@ -0,0 +1,151 @@
++// Checks the share links and the insights (explainer, category fit, map, overlap):  node tools/check_share.js
++// Exits with 1 if a check fails.
++const fs = require('fs');
++const path = require('path');
++const vm = require('vm');
++
++const root = path.join(__dirname, '..');
++const ctx = {
++    localStorage: { getItem() { return null; }, setItem() {} },
++    location: { href: 'https://example.org/app/results.html' },
++    console,
++    atob: text => Buffer.from(text, 'base64').toString('binary'),
++    btoa: text => Buffer.from(text, 'binary').toString('base64')
++};
++vm.createContext(ctx);
++['data.js', 'scoring.js', 'share.js', 'insights.js'].forEach(file => {
++    vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8').replace(/^const /gm, 'var '), ctx, { filename: file });
++});
++const { HV, HVShare, HVInsights } = ctx;
++
++let failures = 0;
++function check(ok, message) { if (!ok) { failures++; console.log('FAIL  ' + message); } else console.log('ok    ' + message); }
++
++let seed = 12345;
++const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
++const valueIds = Object.keys(HV.categoryOf);
++function randomAnswers(count) {
++    const answers = {};
++    const picked = new Set();
++    while (picked.size < count) picked.add(valueIds[Math.floor(random() * valueIds.length)]);
++    picked.forEach(value => {
++        const category = HV.categoryOf[value];
++        (answers[category] = answers[category] || []).push({ value, agree: Math.round((random() * 2 - 1) * 100) / 100 });
++    });
++    return answers;
++}
++const flat = answers => Object.keys(answers).flatMap(cat => answers[cat].map(item => item.value + '=' + item.agree)).sort().join(',');
++const labels = HVInsights.labels;
++function ownAnswers(label) {
++    const answers = {};
++    const byCategory = HV.stancesByCategory(label);
++    Object.keys(byCategory).forEach(cat => { answers[cat] = byCategory[cat].map(item => ({ value: item.value, agree: item.stance })); });
++    return answers;
++}
++
++// 1. Share codes
++const hashes = {};
++const collisions = [];
++valueIds.forEach(id => {
++    const h = HVShare.hashOf(id);
++    if (hashes[h]) collisions.push(id + ' and ' + hashes[h]);
++    hashes[h] = id;
++});
++check(collisions.length === 0, `no two of the ${valueIds.length} values share a code hash` + (collisions.length ? ': ' + collisions.join('; ') : ''));
++
++let roundTripOk = true;
++for (let i = 0; i < 200; i++) {
++    const answers = randomAnswers(1 + Math.floor(random() * 60));
++    const decoded = HVShare.decode(HVShare.encode(answers));
++    if (!decoded || flat(decoded) !== flat(answers)) { roundTripOk = false; break; }
++}
++check(roundTripOk, 'encode then decode gives back the same answers (200 random sets, up to 60 values)');
++
++const heavy = HVShare.encode(randomAnswers(60));
++check(heavy.length < 400, `60 values make a code of ${heavy.length} characters (under 400)`);
++check(/^[A-Za-z0-9_-]+$/.test(heavy), 'a code uses only characters that are safe in a URL hash');
++
++const bad = ['', 'abc', '!!!', 'AA', HVShare.encode({}), 'Ag' + heavy.slice(2)];
++check(bad.every(code => HVShare.decode(code) === null), 'empty, short, malformed and wrong-version codes are rejected');
++
++const sample = randomAnswers(5);
++const code = HVShare.encode(sample);
++check(HVShare.codeFromText('https://example.org/app/shared.html#r=' + code) === code, 'the code is found inside a pasted shared link');
++check(HVShare.codeFromText('see https://x.org/compare.html#a=' + code + '&b=' + code + '&an=Me') === code, 'the code is found inside a pasted compare link');
++check(HVShare.codeFromText(code) === code, 'a bare code is accepted');
++check(HVShare.codeFromText('not a code at all') === null, 'text that is not a code is rejected');
++check(HVShare.link('shared.html', sample) === 'https://example.org/app/shared.html#r=' + code, 'link() builds an address next to the current page');
++
++// unknown values (data changed since the link was made) are skipped, the rest still loads
++const unknownByte = Buffer.from([1, 1, 2, 3, 150]).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
++check(HVShare.decode(unknownByte) === null, 'a code of only unknown values is rejected instead of giving empty results');
++
++// 2. Explainer
++let explainOk = true, explainMessage = '';
++labels.forEach(label => {
++    const stanceCount = Object.values(HV.stancesByCategory(label)).reduce((n, list) => n + list.length, 0);
++    const info = HVInsights.explain(ownAnswers(label), label);
++    if (info.toward.length !== stanceCount || info.away.length || info.missing.length) { explainOk = false; explainMessage = label; }
++});
++check(explainOk, 'answering exactly like an ideology: all its values pull toward it, none away, none missing' + (explainMessage ? ' (fails for ' + explainMessage + ')' : ''));
++
++let sumsOk = true;
++for (let i = 0; i < 30; i++) {
++    const answers = randomAnswers(20);
++    const label = labels[Math.floor(random() * labels.length)];
++    const info = HVInsights.explain(answers, label);
++    const listed = Object.values(HV.stancesByCategory(label)).reduce((n, list) => n + list.length, 0);
++    const answered = Object.values(answers).reduce((n, list) => n + list.length, 0);
++    if (info.toward.length + info.away.length + info.flat.length + info.missing.length !== listed) sumsOk = false;
++    if (info.toward.length + info.away.length + info.flat.length + info.unlisted.length !== answered) sumsOk = false;
++    if (info.toward.some(r => r.score <= 0) || info.away.some(r => r.score >= 0)) sumsOk = false;
++}
++check(sumsOk, 'explain() accounts for every listed stance and every answer exactly once, with the right signs (30 random cases)');
++
++const opposite = ownAnswers(labels[0]);
++Object.keys(opposite).forEach(cat => opposite[cat].forEach(item => { item.agree = -item.agree; }));
++const flipped = HVInsights.explain(opposite, labels[0]);
++check(flipped.toward.length === 0 && flipped.away.length > 0, 'answering the opposite of an ideology: every value pulls away');
++
++const diff = HVInsights.differences(randomAnswers(25), labels[3], labels[7]);
++check(diff.aBetter.every(r => r.gap > 0) && diff.bBetter.every(r => r.gap < 0), 'differences() lists each value on the side that fits better');
++
++// 3. Category fit
++const fit = HVInsights.categoryFit(ownAnswers(labels[5]), labels[5]);
++check(Object.values(fit).every(v => v === null || (v > 0 && v <= 1)), 'category fit of an ideology against its own stances is positive in every category it lists');
++check(Object.keys(HVInsights.categoryFit({}, labels[5])).every(cat => HVInsights.categoryFit({}, labels[5])[cat] === null), 'category fit with no answers is null everywhere');
++
++// 4. Map
++const mapA = HVInsights.map();
++check(mapA.points.length === labels.length && mapA.points.every(p => p.every(Number.isFinite)), `the map has a finite position for each of the ${labels.length} ideologies`);
++check(JSON.stringify(mapA.points.slice(0, 5)) === JSON.stringify(HVInsights.map().points.slice(0, 5)), 'the map is the same every time (cached and deterministic)');
++const xs = mapA.points.map(p => p[0]), ys = mapA.points.map(p => p[1]);
++const spread = list => { const mean = list.reduce((a, b) => a + b, 0) / list.length; return Math.sqrt(list.reduce((s, v) => s + (v - mean) ** 2, 0) / list.length); };
++check(spread(xs) > 0.05 && spread(ys) > 0.05 && spread(xs) >= spread(ys), 'both axes carry spread and the first axis carries the most');
++check(mapA.ends.every(e => e.high.length === 3 && e.low.length === 3), 'each axis has three values at each end to name it');
++
++let near = 0;
++labels.forEach(label => {
++    const you = HVInsights.place(ownAnswers(label));
++    const own = mapA.points[labels.indexOf(label)];
++    const distances = mapA.points.map(p => Math.hypot(p[0] - you[0], p[1] - you[1])).sort((a, b) => a - b);
++    const ownDistance = Math.hypot(own[0] - you[0], own[1] - you[1]);
++    if (ownDistance <= distances[Math.ceil(labels.length * 0.1)]) near++;
++});
++const nearShare = near / labels.length;
++check(nearShare >= 0.85, `answering like an ideology places you among its nearest 10% on the map for ${(nearShare * 100).toFixed(1)}% of ideologies (at least 85%)`);
++
++// 5. Overlap
++const own = ownAnswers(labels[10]);
++const same = HVInsights.overlap(own, own);
++check(Math.abs(same.ideology - 1) < 1e-9 && Math.abs(same.values - 1) < 1e-9, 'two identical answer sets overlap 100% in ideologies and values');
++const opp = JSON.parse(JSON.stringify(own));
++Object.keys(opp).forEach(cat => opp[cat].forEach(item => { item.agree = -item.agree; }));
++const against = HVInsights.overlap(own, opp);
++check(against.values < 0.001 || against.values < same.values, 'opposite answers on the same values have a value agreement near 0');
++check(against.ideology < same.ideology, 'opposite answers overlap less in ideologies than identical ones');
++const disjoint = HVInsights.overlap({ economics: [{ value: Object.keys(HV.categoryOf).find(v => HV.categoryOf[v] === 'economics'), agree: 1 }] }, { culture: [{ value: Object.keys(HV.categoryOf).find(v => HV.categoryOf[v] === 'culture'), agree: 1 }] });
++check(disjoint.values === null && disjoint.ideology >= 0 && disjoint.ideology <= 1, 'answers with no value in common give no value agreement and an overlap between 0 and 1');
++
++console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
++process.exit(failures ? 1 : 0);

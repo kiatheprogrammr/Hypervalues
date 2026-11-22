@@ -28,12 +28,14 @@
         <div id="explain-panel" class="ins-section" style="display: none;"></div>
         <div id="radar-panel" class="ins-section" style="display: none;"></div>
         <div id="map-panel" class="ins-section" style="display: none;"></div>
+        <div id="ideology-map" class="ins-section" style="display: none;"></div>
 
         <div class="button-container">
             <button id="clear-button" style="display: none;">Clear all</button>
             <div id="share-row" class="download-row" style="display: none;">
                 <button id="share-button">Copy share link</button>
-                <button id="compare-button" onclick="location.href='compare.html'">Compare with a friend or an ideology</button>
+                <button id="compare-button" onclick="location.href='compare.html#m=i'">Compare ideologies</button>
+                <button onclick="location.href='tensions.html'">Your tensions</button>
                 <button id="axes-button" onclick="location.href='axes.html'">Build your own map axes</button>
             </div>
             <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
@@ -51,6 +53,7 @@
 
     <script src="data.js"></script>
     <script src="ideology_matrix.js"></script>
+    <script src="ideology_map_3d.js"></script>
     <script src="scoring.js"></script>
     <script src="share.js"></script>
     <script src="insights.js"></script>
@@ -138,7 +141,7 @@
             labelDiv.innerHTML = '';
             closestList.innerHTML = '';
             closestSection.style.display = 'none';
-            ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = 'none'; });
+            ['explain-panel', 'radar-panel', 'map-panel', 'ideology-map'].forEach(id => { byId(id).style.display = 'none'; });
 
             const touched = categories.some(category => answers[category]);
             panel.style.display = touched ? '' : 'none';
@@ -202,10 +205,11 @@
             }
 
             if (best) {
-                ['explain-panel', 'radar-panel', 'map-panel'].forEach(id => { byId(id).style.display = ''; });
+                ['explain-panel', 'radar-panel', 'map-panel', 'ideology-map'].forEach(id => { byId(id).style.display = ''; });
                 HVInsights.renderExplainer(byId('explain-panel'), answers, ranked.slice(0, 4));
                 HVInsights.renderRadar(byId('radar-panel'), answers, ranked.slice(0, 3));
                 HVInsights.renderMap(byId('map-panel'), [{ name: 'You', answers }]);
+                HV3DMap.render(byId('ideology-map'), { answers, selected: best.label });
             }
         }
 

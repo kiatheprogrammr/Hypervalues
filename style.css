@@ -998,6 +998,15 @@ a:hover {
     }
 }
 
+/* ---------- Interactive 3D ideology map ---------- */
+.ideology-map-wrap { width: 100%; }
+.ideology-map-canvas { display: block; width: 100%; height: min(62vw, 460px); min-height: 300px; border: 1px solid var(--card-border); border-radius: var(--radius-md); background: var(--bg-color); touch-action: none; cursor: grab; }
+.ideology-map-canvas:active { cursor: grabbing; }
+.ideology-map-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.ideology-map-tools button { padding: 8px 14px; }
+.ideology-map-hint { margin: 0; color: var(--text-dim); font-size: .9rem; }
+.ideology-map-tooltip { min-height: 1.5em; margin: 10px 0 0; color: var(--text-primary); }
+
 /* ---------- Insights: why this result, fit by category, map (insights.js) ---------- */
 .ins-section {
     width: 100%;

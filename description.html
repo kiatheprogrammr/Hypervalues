@@ -15,6 +15,7 @@
         <h1 id="ideology-title">Loading...</h1>
         <div id="value-edit" class="value-edit" style="display: none;"></div>
         <div id="ideology-viewer" class="iv-viewer" style="display: none;"></div>
+        <div id="ideology-map" class="ins-section" style="display: none;"></div>
 
         <div class="description-box">
             <p id="ideology-description"></p>
@@ -29,6 +30,8 @@
     </div>
 
     <script src="data.js"></script>
+    <script src="ideology_matrix.js"></script>
+    <script src="ideology_map_3d.js"></script>
     <script src="scoring.js"></script>
     <script src="slider.js"></script>
     <script>
@@ -56,6 +59,9 @@
             originalSign.style.display = 'none';
             descEl.innerText = descriptions[itemId] || "Description coming soon!";
             buildViewer(itemId);
+            const map = document.getElementById('ideology-map');
+            map.style.display = '';
+            HV3DMap.render(map, { selected: itemId });
         } else {
             const prettyName = (resultsMapping[category] && resultsMapping[category][itemId])
                                 ? resultsMapping[category][itemId]

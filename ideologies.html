@@ -12,7 +12,8 @@
 <body>
     <div class="main-container">
         <h1>All Ideologies</h1>
-        <p class="intro-text">Below is a collection of all ideologies included in HyperValues, divided by their political category.</p>
+        <p class="intro-text">Explore the three-dimensional map, then browse the full ideology collection by category.</p>
+        <div id="ideology-map" class="ins-section"></div>
         
         <div id="ideologies-container"></div>
         
@@ -22,8 +23,12 @@
     </div>
 
     <script src="data.js"></script>
+    <script src="ideology_matrix.js"></script>
+    <script src="ideology_map_3d.js"></script>
     <script>
         const container = document.getElementById('ideologies-container');
+        HV3DMap.render(document.getElementById('ideology-map'));
+
 
         for (const groupName in ideologyGroups) {
             const section = document.createElement('div');

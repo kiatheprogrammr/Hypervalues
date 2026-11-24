@@ -139,7 +139,7 @@ check(strongChecked > 0 && strongDropped === strongChecked, 'a neutral answer lo
     labels.forEach(label => {
         const byCategory = HV.stancesByCategory(label);
         const count = Object.values(byCategory).reduce((n, list) => n + list.length, 0);
-        if (count === 0 || count > 12) return;
+        if (count === 0 || count > 16) return;
         const answers = {};
         Object.keys(byCategory).forEach(cat => { answers[cat] = byCategory[cat].map(item => ({ value: item.value, agree: item.stance })); });
         HV.guessedValues(label, 30).forEach(g => {
@@ -150,7 +150,7 @@ check(strongChecked > 0 && strongDropped === strongChecked, 'a neutral answer lo
         if (HV.rankIdeologies(answers)[0].label === label) hits++;
     });
     const share = total ? hits / total : 0;
-    check(total > 100 && share >= 0.5, 'ideologies with at most 12 listed stances, answered in full plus 30 related values: own ideology first for ' + (share * 100).toFixed(1) + '% of ' + total + ' (at least 50%)');
+    check(total > 100 && share >= 0.5, 'ideologies with at most 16 listed stances, answered in full plus 30 related values: own ideology first for ' + (share * 100).toFixed(1) + '% of ' + total + ' (at least 50%)');
 }
 
 // 6. Speed

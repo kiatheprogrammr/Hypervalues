@@ -13,12 +13,32 @@
         <h1>Changelog</h1>
 
         <div class="description-box">
+            <h3>3.2 - 23.11.2026</h3>
+            <ul>
+                <li>The philosophy work from the gniewomir924 fork is taken over: there are now 21 philosophy values (including Historical Materialism, Absolute Idealism, Actual Idealism, Positivism and Thomism, plus Amoralism and Egoism, which moved to the philosophy category), with their icons, definitions and estimated stances on the ideologies. The other changes from that fork are included too: the ideologies it added (for example Anarcho-Fascism and National Radicalism), the new values and icons, the Custom Results mode and its badge.</li>
+                <li>The philosophy questions are reworded so that each answer is clearly different from its neighbours: Positivism is now about verifiable scientific claims instead of repeating Empiricism, Thomism is about the compatibility of reason and faith, Historical Materialism says that material conditions are the foundation of society, and the Stoicism answer now includes accepting what we cannot control.</li>
+                <li>The ideology matrix is rebuilt for the merged data: 270 ideologies by 184 values (ideology_matrix.js).</li>
+                <li>The Conservatism icon is replaced with the "landmark" icon from the Lucide icon set (ISC License) on the usual round badge.</li>
+                <li>tools/check_scoring.js now counts ideologies with up to 16 listed stances (before: 12) in its detailed-user check, because the new philosophy stances raised the number of stances per ideology. Own ideology first: 98.6% of 145.</li>
+            </ul>
+        </div>
+
+        <div class="description-box">
             <h3>3.15.0 - 21.11.2026</h3>
             <ul>
                 <li>Every ideology now has a score for every value: a complete matrix of 266 ideologies by 154 values (ideology_matrix.js), each score from -1 (strongly opposes) to +1 (strongly supports), 0 for neutral or not clearly defined. Stances stated in an ideology's definition are used as they are; where an ideology says nothing about a value, the score is an estimate taken from similar ideologies, limited to +-0.5 so a guess never looks like a stated position, and marked "estimated" wherever it is shown. A new check (tools/check_matrix.js) fails on a missing pair, a score outside -1 to +1, or a stated score that differs from the definition.</li>
                 <li>"Why this result?" now compares every value you answered with the ideology's score for it, using one calculation: fit = your answer x its score. An answer of +1 against a score of -1 is a strong conflict and is listed under "Pulling you away" for every ideology shown; values you did not answer are never counted as conflicts and are listed separately. The panel explains the score, marks estimated scores, and links to the detailed comparison.</li>
                 <li>Compare now also works with any ideology. On the Compare page choose "An ideology" and browse all 266 (filter, order by fit or A to Z, quick buttons for your closest), and see which of your answered values align, conflict or are neutral, by category, with your position and the ideology's on the map. The comparison has its own link.</li>
                 <li>New Custom axes page (also in the menu): build up to two map axes of your own with a label, a name for each end, and any values with a weight from -1 to +1 (negative moves toward the low end). You and all ideologies are placed with position = sum(weight x score) / sum(|weight|) from the same scores, and the page shows the calculation value by value for you and for any ideology you select. Axes can start from the existing map's axes and are saved in your browser. The original map stays on the results page.</li>
+            </ul>
+        </div>
+
+        <div class="description-box">
+            <h3>3.14.2 - 22.11.2026</h3>
+            <ul>
+                <li>5 philosophy values are added, each with an AI-made icon (marked as such on its page) and a definition: Historical Materialism, Absolute Idealism, Actual Idealism, Positivism and Thomism. There are now 15 philosophy values and 165 values in all.</li>
+                <li>Materialism and idealism now each open a follow-up question. Materialism splits into plain materialism and Historical Materialism; idealism splits into plain idealism, Absolute Idealism (Hegel) and Actual Idealism (Gentile). Positivism is a new option under "How do you decide whether a claim is true?" and Thomism under the question about weighing a promise against a larger good.</li>
+                <li>The new values have estimated stances on the ideologies (Historical Materialism 68, Absolute Idealism 70, Actual Idealism 19, Positivism 75, Thomism 90), set from each ideology's existing philosophy stances, its group and the values it already holds, with named corrections for the clear cases such as Marxism and Italian Fascism. Only stances of 0.3 or more in either direction are listed, because every listed stance slightly lowers an ideology's rank for answers that do not use it. For the 538 value sets that define the ideologies, the best match is the same as before for 470, and the share that rank first for their own defining values went from 218 to 206.</li>
             </ul>
         </div>
 
@@ -32,6 +52,20 @@
                 <li>Accessibility and themes: a visible focus mark everywhere (including the theme corner), a skip link and a main landmark on every page, the theme button says what it will do, keyboard shortcuts in the quiz (1 to 9 choose an answer, Left arrow or Backspace go back) with each new question read out, sliders announce their value and word, and animations stop for people who ask for reduced motion. The light theme's dim text and the ideology names on outlined bubbles now reach a 4.5:1 contrast in both themes, and the text on colored bubbles is white or near-black, whichever reads better. Without a saved choice the theme now follows the system setting.</li>
                 <li>Automated checks: a GitHub Action runs on every push and pull request (script syntax, JSON files, links to files, the data and ranking checks, and new checks for share links and charts), so a change uploaded from the browser is checked too.</li>
                 <li>The epsilon multiplier in the ranking was adjusted so that detailed users are not penalized unfairly: every value you answer that an ideology does not list used to multiply its likelihood by epsilon again, so the penalty compounded with the number of answers and pushed people who answered many values away from ideologies with few listed stances. Epsilon is now raised to the power 10 / max(m, 10), where m is the number of values you answered. With 10 answers or fewer the result is exactly the same as before; with more, the penalty softens. Nothing else in the model changed.</li>
+            </ul>
+        </div>
+
+        <div class="description-box">
+            <h3>3.13.3 - 21.11.2026</h3>
+            <ul>
+                <li>Added National Radicalism, referring to the Polish National Radical Camp (ONR, 1934), to Third Position. Added its historical description, value combination, color and 23 estimated scoring positions.</li>
+            </ul>
+        </div>
+
+        <div class="description-box">
+            <h3>3.13.2 - 21.11.2026</h3>
+            <ul>
+                <li>1 ideology is added to Dystopian: Anarcho-Fascism, after Jonas Nilsson's 2017 book Anarcho-Fascism: Nature Reborn, with a definition written in the style of this project, a value set and 18 stances (10 it holds, 8 it opposes). The sources are the author's own definition and published summaries and reviews of the book. There are now 268 ideologies.</li>
             </ul>
         </div>
 

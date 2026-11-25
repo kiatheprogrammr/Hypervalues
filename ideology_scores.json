@@ -375,6 +375,10 @@
         "d": "Centrist approach combining a market economy with social-democratic goals: the third way of modernization and public-private partnership, a post-industrial economy, civil liberalism and representative democracy, globalism and progressive taxation.",
         "s": "third_way:1|post_industrialism:0.6|civil_liberalism:0.6|representative_democracy:0.6|Globalism:0.5|Progressive_Taxation:0.4|positivism:0.3|pragmatism:0.53|utilitarianism:0.34|pluralism:0.31|deontology:0.24"
     },
+    "Rembowskism": {
+        "d": "A results-first centrism that judges every policy by whether it works: pragmatism and the third way, a social market economy, representative democracy and meritocracy, civic nationalism and federalism, a cautious realist foreign policy with some Keynesian support in downturns. It rejects ideological purity, laissez-faire dogma, communization and autocracy.",
+        "s": "pragmatism:1|third_way:.6|social_market:.5|representative_democracy:.6|meritocracy:.5|civic_nationalism:.4|federalism:.4|Realpolitik:.6|keynesianism:.3|civil_liberalism:.3|individualism:.3|rationalism:.4|empiricism:.5|communization:-.8|autocracy:-.7|laissez_faire:-.4|absolute:-.7"
+    },
     "Christian Democracy": {
         "d": "Politics based on Christian social ethics: a social market economy that joins competition with solidarity, representative democracy, religious traditionalism grounded in family and faith, internationalism through European integration, and progressive taxation that finances social solidarity, subsidiarity and care for the family and the weak.",
         "s": "social_market:0.8|representative_democracy:0.8|religious_traditionalism:0.5|Internationalism:0.5|Progressive_Taxation:0.4|thomism:0.65|idealism:0.6|nihilism:-0.6|naturalism:-0.6|deontology:0.5|dualism:0.5|materialism:-0.4|pragmatism:0.4"
@@ -822,6 +826,10 @@
         "s": "technocracy:0.6|prometheanism:0.5|collective_distribution:0.6|progressivism:0.5|state_socialism:0.5|laissez_faire:-1|yellow_socialism:0.5|productive_democracy:0.4|futurism:0.3|historical_materialism:0.5|positivism:0.45|individualism:-0.54|materialism:0.9|idealism:-0.8|naturalism:0.7|rationalism:0.6|empiricism:0.6|dualism:-0.5",
         "low": 1
     },
+    "Cybersyndicalism": {
+        "d": "Workers' syndicates and councils that coordinate production through open digital and cybernetic networks instead of a state or a market: syndicalism and cybernetic socialism, councilism, digital and productive democracy, confederalism, post-industrialism and prometheanism, with civil libertarianism and internationalism. It rejects laissez-faire, state socialism, autocracy and centralism.",
+        "s": "syndicalism:1|cybernetic_socialism:.8|councilism:.7|digital_democracy:.7|productive_democracy:.6|confederalism:.6|prometheanism:.5|post_industrialism:.5|futurism:.4|Internationalism:.6|civil_libertarianism:.5|social_progressivism:.4|laissez_faire:-1|state_socialism:-.6|autocracy:-.8|centralism:-.5|hierarchical_communism:-.6|corporatism:-.5|materialism:.5|rationalism:.5|empiricism:.4|positivism:.3|historical_materialism:.3"
+    },
     "Fourierism": {
         "d": "Charles Fourier's utopian socialism: society organized into self-sufficient cooperative communities (communitarianism and communal self-rule), work chosen by passion, and permissivism that frees people from the repression of their desires, together with social-progressive reform such as the emancipation of women. It rejects laissez-faire competition.",
         "s": "utopian_socialism:1|communalism:0.6|communitarianism:0.8|permissivism:0.7|social_progressivism:0.5|laissez_faire:-0.9|historical_materialism:-0.3|individualism:-0.41|idealism:0.36|nihilism:-0.33|pluralism:0.25|stoicism:-0.22|deontology:-0.22"
@@ -1160,5 +1168,13 @@
     "Anarcho-Fascism": {
         "d": "A decentralist doctrine from Jonas Nilsson's book Anarcho-Fascism: Nature Reborn (2017): government authority should be practiced in the smallest possible units able to keep their own sovereignty, beginning with the family, whose head is its authority both inside and out, and defended by a generally armed population and local militias instead of a central army or bureaucracy (patchwork, subsidiarity and confederalism, with centralism and hypercentralism rejected). The state exists only to defend its people in war and to help them flourish, and it serves the interests of its own kin and in-group (tribalism, ethnic nationalism and communitarianism) within a shared Western civilization (civilizationism) and an armed neutrality abroad. It holds that falsehoods contrary to nature, such as feminism and universal human rights, are the cause of Western decline, and it calls for a traditional, family-centered and masculine order (traditionalist conservatism and reactionaryism). It rejects cosmopolitanism, globalism, multiculturalism, progressivism, social progressivism and civil liberalism.",
         "s": "patchwork:0.9|subsidiarity:0.6|confederalism:0.5|centralism:-0.8|hypercentralism:-1|Tribalism:0.6|civilizationism:0.5|communitarianism:0.5|ethnic_nationalism:0.4|Cosmopolitanism:-1|multiculturalism:-0.7|armed_neutrality:0.6|Globalism:-1|traditionalist_conservatism:0.4|reactionaryism:0.4|social_progressivism:-0.9|progressivism:-0.8|civil_liberalism:-0.6|anarchism:0.7|ethical_statism:0.7|mutualism:0.61|corporatism:0.5|laissez_faire:0.56|individualism:-0.46|utilitarianism:-0.7|naturalism:-0.64|rationalism:-0.61|idealism:0.55|pragmatism:-0.5|materialism:-0.46|stoicism:0.45|empiricism:-0.43"
+    },
+    "Tung Tung Tung Sahur Ecofascist Accelerationism": {
+        "d": "A secret joke doctrine named after the Tung Tung Tung Sahur internet meme: speed up the collapse of industrial society so that nature can return, led by a strong state at an early-morning pace: conservationism and environmentalism, romantic nationalism, ethical statism, technogaianism, techno-fatalism and nihilism with a taste for futurism and isolationism. It rejects cosmopolitanism, globalism and civil liberalism.",
+        "s": "conservationism:.8|environmentalism:.7|romantic_nationalism:.6|ethical_statism:.6|regimentalism:.6|technogaianism:.5|Isolationism:.5|nihilism:.7|techno_fatalism:.6|futurism:.5|prometheanism:.4|patchwork:.3|Cosmopolitanism:-.8|Globalism:-.8|civil_liberalism:-.7|industrialism:-.5"
+    },
+    "Triple T Falangist Neolibertarianism": {
+        "d": "A secret joke doctrine that fuses Falangist corporatism and romantic nationalism with neolibertarian free markets and a minimal state, announced by three knocks before dawn: corporatism and laissez-faire, minarchism, flat taxation, religious traditionalism, imperialism, regimentalism and a nihilist shrug. It rejects communization, state socialism and globalism.",
+        "s": "corporatism:.6|laissez_faire:.8|minarchism:.7|flat_taxation:.6|romantic_nationalism:.6|religious_traditionalism:.6|Imperialism:.6|ethical_statism:.4|regimentalism:.4|civil_libertarianism:.4|industrialism:.5|individualism:.5|thomism:.4|nihilism:.5|Globalism:-.5|communization:-1|state_socialism:-.9"
     }
 }

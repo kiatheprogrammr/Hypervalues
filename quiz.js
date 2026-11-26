@@ -15,6 +15,7 @@ function showError(message) {
   document.getElementById('question').innerText = message;
   const buttonsDiv = document.getElementById('buttons');
   buttonsDiv.innerHTML = '';
+  buttonsDiv.classList.remove('cards', 'locked', 'multi-column');
   buttonsDiv.appendChild(makeButton('Back', backToList));
 }
 
@@ -43,6 +44,25 @@ function makeButton(text, onClick) {
   return btn;
 }
 
+// an answer is a card: hover or focus lifts it forward in white, a click confirms it and the others fade
+function makeCard(text, index, color, onChoose) {
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'answer-card'; btn.style.setProperty('--i', index);
+  if (color) btn.style.setProperty('--card-accent', color);
+  const key = document.createElement('span'); key.className = 'card-key'; key.textContent = String(index + 1); key.setAttribute('aria-hidden', 'true');
+  const label = document.createElement('span'); label.className = 'card-text'; label.textContent = text;
+  btn.append(key, label);
+  btn.onclick = () => {
+    const wrap = btn.parentElement;
+    if (wrap.classList.contains('locked')) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onChoose(); return; }
+    wrap.classList.add('locked'); btn.classList.add('chosen');
+    wrap.querySelectorAll('.answer-card').forEach(other => { if (other !== btn) other.classList.add('faded'); });
+    setTimeout(onChoose, 420);
+  };
+  return btn;
+}
+
 function renderNode(node) {
   currentNodeId = node.id;
   const buttonsDiv = document.getElementById('buttons');
@@ -52,15 +72,11 @@ function renderNode(node) {
   questionEl.tabIndex = -1;
   ensureKeyboardHint(buttonsDiv);
 
-  if (node.options && node.options.length > 3) {
-    buttonsDiv.classList.add('multi-column');
-  } else {
-    buttonsDiv.classList.remove('multi-column');
-  }
+  buttonsDiv.classList.add('cards');
+  buttonsDiv.classList.remove('locked', 'multi-column');
 
   node.options.forEach((opt, index) => {
-    const btn = makeButton(opt.text, () => selectOption(opt.next));
-    if (opt.color) btn.style.backgroundColor = opt.color;
+    const btn = makeCard(opt.text, index, opt.color, () => selectOption(opt.next));
     if (index < 9) btn.setAttribute('aria-keyshortcuts', String(index + 1));
     buttonsDiv.appendChild(btn);
   });

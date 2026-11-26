@@ -28,7 +28,7 @@ function toggleTheme() {
 // pills) is mixed toward white or black until it reaches a 4.5:1 contrast, one color for each theme; text on a
 // filled bubble is white or near-black, whichever contrasts more.
 const hvInk = (function () {
-    const DARK_BG = '#0a0a0c', LIGHT_BG = '#f6f6f8';
+    const DARK_BG = '#18181b', LIGHT_BG = '#f6f6f8';
     const parse = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
     const luminance = rgb => {
         const [r, g, b] = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
@@ -94,6 +94,31 @@ function buildTopbar() {
         nav.append(a);
     });
 
+    const pill = document.createElement('span');
+    pill.className = 'hv-nav-pill'; pill.setAttribute('aria-hidden', 'true'); nav.prepend(pill);
+    const navLinks = [...nav.querySelectorAll('a')];
+    const currentLink = () => nav.querySelector('a[aria-current="page"]');
+    const placePill = (link, animate) => {   // the highlight slides to the hovered link and back to the current page
+        if (!link) { pill.style.opacity = '0'; return; }
+        if (!animate) pill.style.transition = 'none';
+        pill.style.width = link.offsetWidth + 'px'; pill.style.left = link.offsetLeft + 'px'; pill.style.opacity = '1';
+        if (!animate) { void pill.offsetWidth; pill.style.transition = ''; }
+    };
+    navLinks.forEach(a => { a.addEventListener('pointerenter', () => placePill(a, true)); a.addEventListener('focus', () => placePill(a, true)); });
+    nav.addEventListener('pointerleave', () => placePill(currentLink(), true));
+    nav.addEventListener('focusout', e => { if (!nav.contains(e.relatedTarget)) placePill(currentLink(), true); });
+    requestAnimationFrame(() => placePill(currentLink(), false));
+    window.addEventListener('resize', () => placePill(currentLink(), false));
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => placePill(currentLink(), false));
+
+    const search = document.createElement('button');
+    search.type = 'button'; search.className = 'hv-search'; search.setAttribute('aria-label', 'Quick jump (press /)');
+    search.append(svg('<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>'));
+    const searchText = document.createElement('span'); searchText.className = 'hv-search-text'; searchText.textContent = 'Jump to…';
+    const searchKey = document.createElement('kbd'); searchKey.textContent = '/';
+    search.append(searchText, searchKey);
+    search.addEventListener('click', () => openPalette(search));
+
     const toggle = document.createElement('button');
     toggle.type = 'button'; toggle.className = 'theme-toggle-corner';
     toggle.setAttribute('onclick', 'toggleTheme()'); toggle.setAttribute('aria-label', 'Toggle light/dark mode');
@@ -109,9 +134,97 @@ function buildTopbar() {
     });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && header.classList.contains('open')) { header.classList.remove('open'); burger.setAttribute('aria-expanded', 'false'); burger.focus(); } });
 
-    header.append(brand, nav, toggle, burger);
+    header.append(brand, nav, search, toggle, burger);
     document.body.prepend(header);
+    const onScroll = () => header.classList.toggle('scrolled', window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
 }
+
+// Quick jump: press / or Ctrl+K (Cmd+K) to search pages and ideologies
+function paletteItems() {
+    const pages = [['Take the test', 'Instruction.html'], ['Values', 'values.html'], ['Ideologies', 'ideologies.html'], ['Compare ideologies', 'compare.html#m=i'],
+        ['Your tensions', 'tensions.html'], ['Custom axes', 'axes.html'], ['Custom results', 'Instruction.html?mode=custom'], ['Changelog', 'changelog.html'], ['License', 'licpage.html']];
+    const items = pages.map(([label, href]) => ({ label, href, kind: 'Page' }));
+    items.push({ label: 'Switch light / dark mode', action: () => toggleTheme(), kind: 'Action' });
+    if (typeof ideologyScores !== 'undefined') {
+        const hidden = typeof secretIdeologies !== 'undefined' ? secretIdeologies : [];
+        Object.keys(ideologyScores).filter(name => !hidden.includes(name)).forEach(name =>
+            items.push({ label: name, href: 'description.html?id=' + encodeURIComponent(name) + '&type=ideology', kind: 'Ideology' }));
+    }
+    return items;
+}
+function openPalette(opener) {
+    if (document.querySelector('.hv-palette')) return;
+    const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+    const all = paletteItems();
+    const overlay = mk('div', 'hv-palette');
+    overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-label', 'Quick jump');
+    const panel = mk('div', 'hv-palette-panel');
+    const input = mk('input', 'hv-palette-input');
+    input.type = 'text'; input.placeholder = 'Jump to a page or an ideology…'; input.autocomplete = 'off'; input.spellcheck = false;
+    input.setAttribute('role', 'combobox'); input.setAttribute('aria-label', 'Jump to a page or an ideology');
+    input.setAttribute('aria-expanded', 'true'); input.setAttribute('aria-controls', 'hv-palette-list'); input.setAttribute('aria-autocomplete', 'list');
+    const list = mk('ul', 'hv-palette-list'); list.id = 'hv-palette-list'; list.setAttribute('role', 'listbox');
+    const hint = mk('div', 'hv-palette-hint', 'Up and down to move, Enter to open, Esc to close');
+    panel.append(input, list, hint); overlay.append(panel);
+    let shown = [], active = 0;
+    const close = () => { overlay.remove(); document.body.style.overflow = ''; if (opener && opener.focus) opener.focus(); };
+    const run = item => { close(); if (item.action) item.action(); else location.href = item.href; };
+    const render = () => {
+        const q = input.value.trim().toLowerCase();
+        shown = q ? all.filter(i => i.label.toLowerCase().includes(q)).sort((a, b) => (b.label.toLowerCase().startsWith(q)) - (a.label.toLowerCase().startsWith(q))).slice(0, 9)
+                  : all.filter(i => i.kind !== 'Ideology');
+        active = Math.min(active, Math.max(shown.length - 1, 0));
+        list.innerHTML = '';
+        if (!shown.length) list.append(mk('li', 'hv-palette-empty', 'No matches'));
+        shown.forEach((item, i) => {
+            const li = mk('li', 'hv-palette-item' + (i === active ? ' active' : ''));
+            li.id = 'hv-pal-' + i; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', i === active ? 'true' : 'false');
+            li.append(mk('span', 'hv-palette-label', item.label), mk('span', 'hv-palette-kind', item.kind));
+            li.addEventListener('pointermove', () => { if (active !== i) { active = i; render(); } });
+            li.addEventListener('click', () => run(item));
+            list.append(li);
+        });
+        if (shown.length) input.setAttribute('aria-activedescendant', 'hv-pal-' + active); else input.removeAttribute('aria-activedescendant');
+        const on = list.querySelector('.active'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    };
+    input.addEventListener('input', () => { active = 0; render(); });
+    input.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % Math.max(shown.length, 1); render(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + Math.max(shown.length, 1)) % Math.max(shown.length, 1); render(); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (shown[active]) run(shown[active]); }
+        else if (e.key === 'Escape') { e.preventDefault(); close(); }
+        else if (e.key === 'Tab') e.preventDefault();
+    });
+    overlay.addEventListener('pointerdown', e => { if (e.target === overlay) close(); });
+    document.body.append(overlay); document.body.style.overflow = 'hidden';
+    render(); input.focus();
+}
+document.addEventListener('keydown', e => {
+    const t = e.target, typing = t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
+    const slash = e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey;
+    const combo = (e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey) && !e.altKey;
+    if (slash || combo) { e.preventDefault(); openPalette(document.querySelector('.hv-search')); }
+});
+
+// Cursor glow (and a slight tilt on answer cards) that follows the mouse over cards
+(function cardGlow() {
+    let last = null;
+    const reset = el => { if (el) ['--mx', '--my', '--rx', '--ry'].forEach(p => el.style.removeProperty(p)); };
+    document.addEventListener('pointermove', e => {
+        if (e.pointerType === 'touch') return;
+        const el = e.target.closest ? e.target.closest('.answer-card, .hv-card') : null;
+        if (el !== last) { reset(last); last = el; }
+        if (!el) return;
+        const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+        el.style.setProperty('--mx', x + 'px'); el.style.setProperty('--my', y + 'px');
+        if (el.classList.contains('answer-card')) {
+            el.style.setProperty('--ry', ((x / r.width - 0.5) * 9).toFixed(2) + 'deg');
+            el.style.setProperty('--rx', (-(y / r.height - 0.5) * 7).toFixed(2) + 'deg');
+        }
+    }, { passive: true });
+    document.addEventListener('pointerleave', () => { reset(last); last = null; }, true);
+})();
 
 window.addEventListener('DOMContentLoaded', () => {
     buildTopbar();

@@ -28,7 +28,7 @@ function toggleTheme() {
 // pills) is mixed toward white or black until it reaches a 4.5:1 contrast, one color for each theme; text on a
 // filled bubble is white or near-black, whichever contrasts more.
 const hvInk = (function () {
-    const DARK_BG = '#18181b', LIGHT_BG = '#f4f4f6';
+    const DARK_BG = '#0a0a0c', LIGHT_BG = '#f6f6f8';
     const parse = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
     const luminance = rgb => {
         const [r, g, b] = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
@@ -61,28 +61,60 @@ const hvInk = (function () {
     };
 })();
 
+// The top bar on every page: brand, main pages and the light/dark switch (the .theme-toggle-corner button)
+function buildTopbar() {
+    document.querySelectorAll('.theme-toggle-corner').forEach(button => button.remove());
+    if (document.querySelector('.hv-topbar')) return;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = (inner, size) => {
+        const el = document.createElementNS(ns, 'svg');
+        el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true');
+        if (size) { el.setAttribute('width', size); el.setAttribute('height', size); }
+        el.innerHTML = inner; return el;
+    };
+    const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const header = document.createElement('header');
+    header.className = 'hv-topbar';
+
+    const brand = document.createElement('a');
+    brand.className = 'hv-brand'; brand.href = 'index.html'; brand.setAttribute('aria-label', 'Hypervalues, home');
+    const logo = document.createElement('img'); logo.src = 'icon.svg'; logo.alt = '';
+    const name = document.createElement('span'); name.textContent = 'Hypervalues';
+    const ver = document.createElement('span'); ver.className = 'hv-ver'; ver.textContent = 'v4.0';
+    brand.append(logo, name, ver);
+
+    const nav = document.createElement('nav');
+    nav.className = 'hv-nav'; nav.id = 'hv-nav'; nav.setAttribute('aria-label', 'Main');
+    [['Start', 'Instruction.html'], ['Values', 'values.html'], ['Ideologies', 'ideologies.html'], ['Compare', 'compare.html#m=i'],
+     ['Tensions', 'tensions.html'], ['Axes', 'axes.html'], ['Changelog', 'changelog.html']].forEach(([label, href]) => {
+        const a = document.createElement('a');
+        a.href = href; a.textContent = label;
+        if (href.split('#')[0].toLowerCase() === page) a.setAttribute('aria-current', 'page');
+        if (label === 'Start') a.addEventListener('click', () => { try { localStorage.removeItem('hvResultMode'); } catch (e) { /* storage is not available */ } });
+        nav.append(a);
+    });
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button'; toggle.className = 'theme-toggle-corner';
+    toggle.setAttribute('onclick', 'toggleTheme()'); toggle.setAttribute('aria-label', 'Toggle light/dark mode');
+    toggle.append(svg('<g class="icon-sun"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></g><g class="icon-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></g>'));
+
+    const burger = document.createElement('button');
+    burger.type = 'button'; burger.className = 'hv-burger';
+    burger.setAttribute('aria-label', 'Menu'); burger.setAttribute('aria-expanded', 'false'); burger.setAttribute('aria-controls', 'hv-nav');
+    burger.append(svg('<path d="M4 7h16M4 12h16M4 17h16"></path>'));
+    burger.addEventListener('click', () => {
+        const open = header.classList.toggle('open');
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && header.classList.contains('open')) { header.classList.remove('open'); burger.setAttribute('aria-expanded', 'false'); burger.focus(); } });
+
+    header.append(brand, nav, toggle, burger);
+    document.body.prepend(header);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-    if (!document.querySelector('.theme-toggle-corner')) {
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'theme-toggle-corner';
-        toggleBtn.setAttribute('onclick', 'toggleTheme()');
-        toggleBtn.setAttribute('aria-label', 'Toggle light/dark mode');
-        toggleBtn.innerHTML = `
-            <svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true">
-                <path d="M0,0 L250,250 L250,0 Z"></path>
-                <!-- Sun Icon (visible in dark mode) -->
-                <g class="icon-sun" transform="translate(142, 52) scale(2.2)">
-                    <circle cx="12" cy="12" r="4"></circle>
-                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-                </g>
-                <!-- Moon Icon (visible in light mode) -->
-                <g class="icon-moon" transform="translate(142, 52) scale(2.2)">
-                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-                </g>
-            </svg>
-        `;
-        document.body.prepend(toggleBtn);
-    }
+    buildTopbar();
     syncThemeButtons();
 
     // landmark and a way past the repeated controls for keyboard and screen reader users

@@ -6,45 +6,71 @@
     <title>Hypervalues</title>
     <meta name="description" content="An original political ideology test that uses a decision tree to find the ideology behind your unique combination of values.">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style-hv.css?v=4.2">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
     <script src="theme.js"></script>
 </head>
 <body>
-    <div class="main-container">
-        <section class="hv-hero">
-            <div class="hv-eyebrow">Political values test &middot; v4.0</div>
-            <h1>Hypervalues</h1>
-            <p class="hv-lead">An original ideology test built on a decision tree. Answer a series of questions and see which ideology your unique combination of values leads to.</p>
-            <div class="hv-cta">
-                <a class="hv-btn primary" href="Instruction.html" onclick="try{localStorage.removeItem('hvResultMode')}catch(e){}">Take the test</a>
-                <a class="hv-btn" href="ideologies.html">Browse ideologies</a>
+    <main class="main-container home-main">
+        <section class="home-hero">
+            <div class="home-copy">
+                <p class="eyebrow"><span class="eyebrow-dot"></span> A political values explorer</p>
+                <h1 aria-label="Politics is more than one label."><span class="w" style="--w:0">Politics</span> <span class="w" style="--w:1">is</span> <span class="w" style="--w:2">more</span> <span class="w" style="--w:3">than</span> <span class="w accent" style="--w:4">one</span> <span class="w accent" style="--w:5">label.</span></h1>
+                <p class="home-intro">Build a profile that keeps your views distinct. See how your values connect to ideologies, and where they pull in different directions.</p>
+                <div class="home-actions">
+                    <a class="button-link button-primary" href="Instruction.html" onclick="try{localStorage.removeItem('hvResultMode')}catch(e){}">Take the test <span aria-hidden="true">&#8599;</span></a>
+                    <a class="button-link button-secondary" href="ideologies.html">Browse ideologies</a>
+                </div>
+                <ul class="proof-points" aria-label="About the test">
+                    <li><span aria-hidden="true">&#10003;</span> Free to explore</li>
+                    <li><span aria-hidden="true">&#10003;</span> No account needed</li>
+                    <li><span aria-hidden="true">&#10003;</span> Results update as you answer</li>
+                </ul>
+            </div>
+            <aside class="profile-preview" aria-label="Example of a multi-dimensional result">
+                <div class="preview-topline"><span class="preview-kicker">A fuller picture</span><span class="preview-number">01 / 03</span></div>
+                <h2>Your views have more than one direction.</h2>
+                <p class="preview-copy">A sample profile can be market-friendly and socially progressive, while still valuing local authority.</p>
+                <div class="preview-axis">
+                    <div class="preview-axis-head"><span>Economics</span><span>Market</span></div>
+                    <div class="preview-track"><span style="--position:72%"></span></div>
+                </div>
+                <div class="preview-axis">
+                    <div class="preview-axis-head"><span>Authority</span><span>Libertarian</span></div>
+                    <div class="preview-track"><span style="--position:35%"></span></div>
+                </div>
+                <div class="preview-axis">
+                    <div class="preview-axis-head"><span>Social values</span><span>Progressive</span></div>
+                    <div class="preview-track"><span style="--position:27%"></span></div>
+                </div>
+                <div class="preview-foot"><span class="preview-spark" aria-hidden="true">&#10035;</span><span>Distinct values. A more nuanced result.</span></div>
+            </aside>
+        </section>
+
+        <section class="home-discover" aria-labelledby="discover-heading">
+            <div class="section-heading-row">
+                <div><p class="eyebrow">Explore Hypervalues</p><h2 id="discover-heading">A better way to read your politics.</h2></div>
+                <p>Take the test, follow your closest ideologies, and see where your own values pull in different directions.</p>
+            </div>
+            <div class="discover-grid">
+                <a class="discover-card" href="Instruction.html" onclick="try{localStorage.removeItem('hvResultMode')}catch(e){}"><span class="discover-index">01</span><span class="discover-icon" aria-hidden="true">&#8599;</span><h3>Take the test</h3><p>Choose the answers that fit you and see which ideology they lead to.</p><span class="discover-link">Start <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card discover-card-red" href="ideologies.html"><span class="discover-index">02</span><span class="discover-icon" aria-hidden="true">&#10035;</span><h3>Explore ideologies</h3><p>Browse every ideology by family, with the values each one holds.</p><span class="discover-link">Browse <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card discover-card-dark" href="tensions.html"><span class="discover-index">03</span><span class="discover-icon" aria-hidden="true">&#8596;</span><h3>Find your tensions</h3><p>See which of your own values pull against each other.</p><span class="discover-link">Open <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card" href="values.html"><span class="discover-index">04</span><span class="discover-icon" aria-hidden="true">&#9679;</span><h3>Values</h3><p>Every value in the test, grouped by category, with its definition.</p><span class="discover-link">Open <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card" href="compare.html#m=i"><span class="discover-index">05</span><span class="discover-icon" aria-hidden="true">&#8644;</span><h3>Compare</h3><p>Put two ideologies, or yourself and an ideology, side by side.</p><span class="discover-link">Open <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card" href="axes.html"><span class="discover-index">06</span><span class="discover-icon" aria-hidden="true">&#9998;</span><h3>Custom axes</h3><p>Build your own axes from the values and place ideologies on them.</p><span class="discover-link">Open <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card" href="Instruction.html?mode=custom"><span class="discover-index">07</span><span class="discover-icon" aria-hidden="true">&#9776;</span><h3>Custom results</h3><p>Set your values directly with sliders instead of answering questions.</p><span class="discover-link">Open <span aria-hidden="true">&#8594;</span></span></a>
+                <a class="discover-card" href="changelog.html"><span class="discover-index">08</span><span class="discover-icon" aria-hidden="true">&#9201;</span><h3>Changelog</h3><p>What changed in every version of Hypervalues.</p><span class="discover-link">Read <span aria-hidden="true">&#8594;</span></span></a>
             </div>
         </section>
 
-        <div class="hv-section-label">Explore</div>
-        <div class="hv-grid">
-            <a class="hv-card" href="values.html"><span class="hv-card-n">01</span><h3>Values</h3><p>Every value in the test, grouped by category, with its definition.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-            <a class="hv-card" href="ideologies.html"><span class="hv-card-n">02</span><h3>Ideologies</h3><p>All ideologies by family, with the values each one holds.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-            <a class="hv-card" href="tensions.html"><span class="hv-card-n">03</span><h3>Your tensions</h3><p>Where your own values pull against each other.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-            <a class="hv-card" href="compare.html#m=i"><span class="hv-card-n">04</span><h3>Compare ideologies</h3><p>Put two ideologies, or yourself and an ideology, side by side.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-            <a class="hv-card" href="axes.html"><span class="hv-card-n">05</span><h3>Custom axes</h3><p>Build your own axes from the values and place ideologies on them.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-            <a class="hv-card" href="Instruction.html?mode=custom"><span class="hv-card-n">06</span><h3>Custom results</h3><p>Set your values directly with sliders instead of answering questions.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-        </div>
-
-        <div class="hv-section-label">Project</div>
-        <div class="hv-grid">
-            <a class="hv-card" href="changelog.html"><span class="hv-card-n">07</span><h3>Changelog</h3><p>What changed in every version.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-            <a class="hv-card" href="licpage.html"><span class="hv-card-n">08</span><h3>License</h3><p>How Hypervalues may be used and shared.</p><span class="hv-card-arrow" aria-hidden="true">&#8599;</span></a>
-        </div>
-
-        <div class="footer-icons">
-            <a href="https://discord.gg/Ba9Av3WSeG" target="_blank" rel="noopener noreferrer" title="Discord" aria-label="Discord" class="footer-icon-link">
-                <img src="discord.svg" alt="" class="footer-icon">
-            </a>
-            <a href="https://github.com/hyperzen2773/hypervalues" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub" class="footer-icon-link">
-                <img src="github.svg" alt="" class="footer-icon">
-            </a>
-        </div>
-    </div>
+        <footer class="home-footer">
+            <span>Hypervalues &middot; A richer picture of political values</span>
+            <div class="footer-icons">
+                <a href="https://discord.gg/Ba9Av3WSeG" target="_blank" rel="noopener noreferrer" title="Discord" aria-label="Discord" class="footer-icon-link"><img src="discord.svg" alt="" class="footer-icon"></a>
+                <a href="https://github.com/kiatheprogrammr/Hypervalues" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub" class="footer-icon-link"><img src="github.svg" alt="" class="footer-icon"></a>
+            </div>
+        </footer>
+    </main>
 </body>
 </html>

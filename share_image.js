@@ -25,7 +25,11 @@ const HVImage = (function () {
             text: read('--text-primary', '#f2f2f2'),
             dim: read('--text-dim', '#9aa0a6'),
             card: read('--card-bg', '#23262d'),
-            border: read('--card-border', '#3a3e47')
+            border: read('--card-border', '#3a3e47'),
+            green: read('--hv-green', '#a9d1b8'),
+            red: read('--hv-red', '#f07b86'),
+            onBrand: read('--on-brand', '#101b17'),
+            soft: read('--accent-soft', '#263c32')
         };
     }
 
@@ -221,7 +225,7 @@ const HVImage = (function () {
         plan.placed.forEach(p => {
             const x0 = region.x + p.col * (plan.colW + gap);
             const y0 = region.y + p.y;
-            ctx.fillStyle = th.text;
+            ctx.fillStyle = th.green;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
             ctx.font = font(BOLD, plan.fTitle);
@@ -242,16 +246,26 @@ const HVImage = (function () {
         const version = (document.querySelector('.version-text') || {}).textContent || '';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = th.text;
-        ctx.font = font(BOLD, compact ? 60 : 64);
-        ctx.fillText('HyperValues', x, y + (compact ? 50 : 54));
-        const titleW = ctx.measureText('HyperValues').width;
-        ctx.fillStyle = th.dim;
-        ctx.font = font(REGULAR, 28);
-        ctx.fillText(version, x + titleW + 14, y + (compact ? 50 : 54));
+        const markR = compact ? 30 : 33, mid = y + markR + 4;
+        ctx.beginPath(); ctx.arc(x + markR, mid, markR, 0, Math.PI * 2); ctx.fillStyle = th.green; ctx.fill();
+        ctx.fillStyle = th.onBrand; ctx.font = font(BOLD, markR * 1.05); ctx.textAlign = 'center';
+        ctx.fillText('H', x + markR, mid + markR * 0.36); ctx.textAlign = 'left';
+        const nameX = x + markR * 2 + 18;
+        ctx.fillStyle = th.text; ctx.font = font(BOLD, compact ? 52 : 58);
+        ctx.fillText('Hypervalues', nameX, mid + (compact ? 18 : 20));
+        const titleW = ctx.measureText('Hypervalues').width;
+        let after = nameX + titleW + 16;
+        if (version) {
+            ctx.font = font(BOLD, 21);
+            const pillW = ctx.measureText(version).width + 28;
+            roundRect(ctx, after, mid - 18, pillW, 36, 18);
+            ctx.lineWidth = 2; ctx.strokeStyle = th.border; ctx.stroke();
+            ctx.fillStyle = th.dim; ctx.textAlign = 'center'; ctx.fillText(version, after + pillW / 2, mid + 7); ctx.textAlign = 'left';
+            after += pillW + 14;
+        }
         if (localStorage.getItem('hvResultMode') === 'custom') {
-            const badgeX = x + titleW + 14 + ctx.measureText(version).width + 18;
-            const badgeY = y + (compact ? 25 : 29);
+            const badgeX = after;
+            const badgeY = mid - 17;
             roundRect(ctx, badgeX, badgeY, 112, 34, 17);
             ctx.fillStyle = th.card;
             ctx.fill();
@@ -266,13 +280,16 @@ const HVImage = (function () {
         }
         y += compact ? 96 : 100;
 
+        ctx.fillStyle = th.red; ctx.font = font(BOLD, 22); ctx.textAlign = 'left';
+        ctx.fillText('YOUR CLOSEST IDEOLOGY', x + 4, y + 22);
+        y += 42;
         const best = ranked[0];
         const color = best ? ((labelColors[best.label] || '#7a7a7a').slice(0, 7)) : '#7a7a7a';
-        const name = best ? wrapShrink(ctx, best.label, w - 80, 2, compact ? 58 : 64, BOLD) : null;
+        const name = best ? wrapShrink(ctx, best.label, w - 80, 2, compact ? 48 : 64, BOLD) : null;
         const lineH = name ? name.px * 1.15 : 0;
         const scoreSize = 34;
         const blockH = name ? (name.lines.length - 1) * lineH + name.px * 0.8 + 16 + scoreSize : 40;
-        const bubbleH = Math.max(150, Math.round(blockH + 80));
+        const bubbleH = Math.max(compact ? 130 : 150, Math.round(blockH + (compact ? 64 : 80)));
         roundRect(ctx, x, y, w, bubbleH, 36);
         ctx.fillStyle = color;
         ctx.fill();
@@ -294,8 +311,8 @@ const HVImage = (function () {
         if (closest.length) {
             closest.forEach((match, index) => {
                 const pill = (labelColors[match.label] || '#7a7a7a').slice(0, 7);
-                const h = 66;
-                roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 33);
+                const h = compact ? 58 : 66;
+                roundRect(ctx, x + 2, y + 2, w - 4, h - 4, (h - 4) / 2);
                 ctx.lineWidth = 4;
                 ctx.strokeStyle = pill;
                 ctx.stroke();
@@ -312,10 +329,83 @@ const HVImage = (function () {
                 ctx.font = font(REGULAR, 28);
                 ctx.textAlign = 'right';
                 ctx.fillText(score, x + w - 30, y + h / 2 + 10);
-                y += h + 14;
+                y += h + (compact ? 10 : 14);
             });
         }
         return y;
+    }
+
+    // The 2D political map: every ideology placed by how similar its stances are (the same map as on the results
+    // page), with the best matches and the person marked. Needs insights.js; returns false when it is not there.
+    function drawMap(ctx, th, x, y, w, h, ranked, answers) {
+        if (typeof HVInsights === 'undefined') return false;
+        let m, you;
+        try { m = HVInsights.map(); you = HVInsights.place(answers); } catch (e) { return false; }
+        const hidden = typeof secretIdeologies !== 'undefined' ? secretIdeologies : [];
+        const top = ranked.slice(0, 3).map(r => r.label);
+        roundRect(ctx, x, y, w, h, 30);
+        ctx.fillStyle = th.card; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = th.border; ctx.stroke();
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = th.red; ctx.beginPath(); ctx.arc(x + 36, y + 44, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = th.text; ctx.font = font(BOLD, 30); ctx.fillText('Political map', x + 54, y + 55);
+        ctx.fillStyle = th.dim; ctx.font = font(REGULAR, 21);
+        const note = 'Ideologies that hold alike values sit close together';
+        ctx.fillText(fit(ctx, note, w - 60, 21, REGULAR) < 21 ? 'Alike ideologies sit close together' : note, x + 30, y + 92);
+        const pad = 30, px = x + pad, py = y + 112, pw = w - 2 * pad, ph = h - 112 - pad;
+        const xs = m.points.map(p => p[0]).concat([you[0]]), ys = m.points.map(p => p[1]).concat([you[1]]);
+        const lo = [Math.min.apply(null, xs), Math.min.apply(null, ys)], hi = [Math.max.apply(null, xs), Math.max.apply(null, ys)];
+        const sx = v => px + (v - lo[0]) / ((hi[0] - lo[0]) || 1) * pw;
+        const sy = v => py + ph - (v - lo[1]) / ((hi[1] - lo[1]) || 1) * ph;
+        ctx.save();
+        roundRect(ctx, px, py, pw, ph, 20); ctx.clip();
+        ctx.fillStyle = th.bg; ctx.fillRect(px, py, pw, ph);
+        ctx.strokeStyle = th.border; ctx.lineWidth = 1.5; ctx.setLineDash([6, 8]);
+        [[sx(0), py, sx(0), py + ph], [px, sy(0), px + pw, sy(0)]].forEach(([x1, y1, x2, y2]) => {
+            if (x1 >= px && x1 <= px + pw && y1 >= py && y1 <= py + ph) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+        });
+        ctx.setLineDash([]);
+        const dot = Math.max(3.5, Math.min(w, h) / 120);
+        HVInsights.labels.forEach((label, j) => {
+            if (top.indexOf(label) >= 0 || hidden.indexOf(label) >= 0) return;
+            ctx.globalAlpha = 0.78; ctx.fillStyle = (labelColors[label] || '#7a7a7a').slice(0, 7);
+            ctx.beginPath(); ctx.arc(sx(m.points[j][0]), sy(m.points[j][1]), dot, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+        const tags = [];
+        top.forEach((label, rank) => {
+            const j = HVInsights.labels.indexOf(label);
+            if (j < 0) return;
+            const cx = sx(m.points[j][0]), cy = sy(m.points[j][1]), r = dot * (rank === 0 ? 2.5 : 2);
+            ctx.beginPath(); ctx.arc(cx, cy, r + 3, 0, Math.PI * 2); ctx.fillStyle = th.bg; ctx.fill();
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = (labelColors[label] || '#7a7a7a').slice(0, 7); ctx.fill();
+            if (rank === 0) tags.push({ text: label, cx, cy, color: th.text });
+        });
+        const ux = sx(you[0]), uy = sy(you[1]), d = dot * 3.4;
+        ctx.beginPath(); ctx.moveTo(ux, uy - d); ctx.lineTo(ux + d, uy); ctx.lineTo(ux, uy + d); ctx.lineTo(ux - d, uy); ctx.closePath();
+        ctx.fillStyle = th.red; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = th.bg; ctx.stroke();
+        tags.push({ text: 'You', cx: ux, cy: uy, color: th.red, bold: true });
+        const placed = [];
+        const overlaps = (a, b) => a.x < b.x + b.w + 6 && b.x < a.x + a.w + 6 && a.y < b.y + b.h + 6 && b.y < a.y + a.h + 6;
+        tags.forEach(tag => {
+            ctx.font = font(BOLD, 22);
+            const tw = ctx.measureText(tag.text).width + 24, th2 = 36;
+            const spots = [[16, -th2 - 8], [16, 12], [-16 - tw, -th2 - 8], [-16 - tw, 12]];     // above right, below right, above left, below left
+            let box = null;
+            for (const [dx, dy] of spots) {
+                const c = { x: tag.cx + dx, y: tag.cy + dy, w: tw, h: th2 };
+                if (c.x < px + 6 || c.x + tw > px + pw - 6 || c.y < py + 6 || c.y + th2 > py + ph - 6) continue;
+                if (!placed.some(o => overlaps(c, o))) { box = c; break; }
+            }
+            if (!box) box = { x: Math.max(px + 6, Math.min(tag.cx + 16, px + pw - tw - 6)), y: Math.max(py + 6, Math.min(tag.cy + 12, py + ph - th2 - 6)), w: tw, h: th2 };
+            placed.push(box);
+            roundRect(ctx, box.x, box.y, tw, th2, 18); ctx.fillStyle = th.card; ctx.fill();
+            ctx.lineWidth = 2; ctx.strokeStyle = tag.bold ? th.red : th.border; ctx.stroke();
+            ctx.fillStyle = tag.color; ctx.textAlign = 'center'; ctx.fillText(tag.text, box.x + tw / 2, box.y + 25);
+        });
+        ctx.restore();
+        ctx.textAlign = 'left';
+        return true;
     }
 
     // The address of the page, with a capital letter at the start of its folder: host.github.io/Hypervalues/
@@ -339,16 +429,25 @@ const HVImage = (function () {
         const th = theme();
         ctx.fillStyle = th.bg;
         ctx.fillRect(0, 0, w, h);
+        // a soft ring in the corner, like the home page
+        ctx.save(); ctx.strokeStyle = th.border; ctx.lineWidth = 2; ctx.globalAlpha = 0.55;
+        [260, 340, 420].forEach(r => { ctx.beginPath(); ctx.arc(w - 40, 40, r, 0, Math.PI * 2); ctx.stroke(); });
+        ctx.restore();
         const blocks = valueBlocks(answers);
         const pad = 60;
         if (kind === 'phone') {
             const y = drawSummary(ctx, th, ranked, pad, pad, w - 2 * pad, kind);
-            const region = { x: pad, y: y + 16, w: w - 2 * pad, h: h - (y + 16) - pad - 30 };
-            drawBlocks(ctx, th, icons, blocks, region, [1, 2, 3], 36);
+            const mapH = 470;
+            const mapped = drawMap(ctx, th, pad, y + 6, w - 2 * pad, mapH, ranked, answers);
+            const top = mapped ? y + 6 + mapH + 26 : y + 16;
+            const region = { x: pad, y: top, w: w - 2 * pad, h: h - top - pad - 30 };
+            drawBlocks(ctx, th, icons, blocks, region, [1, 2, 3], 30);
             drawFooter(ctx, th, pad, h - pad + 4);
         } else {
             const left = 600;
-            drawSummary(ctx, th, ranked, pad, pad, left, kind);
+            const y = drawSummary(ctx, th, ranked, pad, pad, left, kind);
+            const mapH = Math.min(440, h - pad - 40 - (y + 4));
+            if (mapH > 260) drawMap(ctx, th, pad, h - pad - 40 - mapH, left, mapH, ranked, answers);
             drawFooter(ctx, th, pad, h - pad + 4);
             const x = pad + left + 56;
             drawBlocks(ctx, th, icons, blocks, { x, y: pad, w: w - x - pad, h: h - 2 * pad }, [2, 3, 4], 40);
@@ -442,7 +541,7 @@ const HVImage = (function () {
         items.forEach((item, i) => {
             const img = document.createElement('img');
             img.src = urls[i];
-            img.alt = 'Your HyperValues result';
+            img.alt = 'Your Hypervalues result';
             img.style.cssText = 'display: block; max-width: 100%; margin: 12px auto; border-radius: 10px; -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto;';
             box.appendChild(img);
         });

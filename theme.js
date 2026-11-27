@@ -1,3 +1,11 @@
+// Colour scheme and interface layer (cream / forest green / red in light mode, deep green in dark mode)
+(function loadScheme() {
+    if (document.querySelector('link[href^="style-hv.css"]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = 'style-hv.css?v=4.2';
+    document.head.appendChild(link);
+})();
+
 (function () {
     let saved = null;
     try { saved = localStorage.getItem('nv_theme'); } catch (e) { /* storage is not available */ }
@@ -28,7 +36,7 @@ function toggleTheme() {
 // pills) is mixed toward white or black until it reaches a 4.5:1 contrast, one color for each theme; text on a
 // filled bubble is white or near-black, whichever contrasts more.
 const hvInk = (function () {
-    const DARK_BG = '#18181b', LIGHT_BG = '#f6f6f8';
+    const DARK_BG = '#101b17', LIGHT_BG = '#f5f2e9';
     const parse = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
     const luminance = rgb => {
         const [r, g, b] = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
@@ -78,7 +86,7 @@ function buildTopbar() {
 
     const brand = document.createElement('a');
     brand.className = 'hv-brand'; brand.href = 'index.html'; brand.setAttribute('aria-label', 'Hypervalues, home');
-    const logo = document.createElement('img'); logo.src = 'icon.svg'; logo.alt = '';
+    const logo = document.createElement('span'); logo.className = 'brand-mark'; logo.textContent = 'H'; logo.setAttribute('aria-hidden', 'true');
     const name = document.createElement('span'); name.textContent = 'Hypervalues';
     const ver = document.createElement('span'); ver.className = 'hv-ver'; ver.textContent = 'v4.0';
     brand.append(logo, name, ver);
@@ -213,7 +221,7 @@ document.addEventListener('keydown', e => {
     const reset = el => { if (el) ['--mx', '--my', '--rx', '--ry'].forEach(p => el.style.removeProperty(p)); };
     document.addEventListener('pointermove', e => {
         if (e.pointerType === 'touch') return;
-        const el = e.target.closest ? e.target.closest('.answer-card, .hv-card') : null;
+        const el = e.target.closest ? e.target.closest('.answer-card, .hv-card, .discover-card') : null;
         if (el !== last) { reset(last); last = el; }
         if (!el) return;
         const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
@@ -246,3 +254,46 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+// ---- Interface extras: scroll progress, reveal on scroll, button ripple, smooth theme change ----
+(function interfaceExtras() {
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const original = window.toggleTheme;
+    if (typeof original === 'function') {
+        window.toggleTheme = function () {
+            if (!reduced) { document.documentElement.classList.add('hv-theme-anim'); setTimeout(() => document.documentElement.classList.remove('hv-theme-anim'), 600); }
+            return original.apply(this, arguments);
+        };
+    }
+    document.addEventListener('pointerdown', e => {      // ripple from the pointer on buttons and link buttons
+        const target = e.target.closest ? e.target.closest('button, .button-link, .hv-btn') : null;
+        if (!target || reduced || target.classList.contains('answer-card') || target.classList.contains('hv-burger') || target.disabled) return;
+        if (target.closest('.hv-topbar') && !target.classList.contains('hv-search')) return;
+        target.classList.add('has-ripple');
+        const r = target.getBoundingClientRect(), dot = document.createElement('span');
+        dot.className = 'hv-ripple'; dot.style.left = (e.clientX - r.left) + 'px'; dot.style.top = (e.clientY - r.top) + 'px';
+        target.appendChild(dot); setTimeout(() => dot.remove(), 700);
+    }, { passive: true });
+    window.addEventListener('DOMContentLoaded', () => {
+        const bar = document.createElement('div'); bar.className = 'hv-progress'; bar.setAttribute('aria-hidden', 'true');
+        const top = document.querySelector('.hv-topbar'); if (top) top.appendChild(bar);
+        const setBar = () => { const max = document.documentElement.scrollHeight - window.innerHeight; bar.style.transform = 'scaleX(' + (max > 0 ? Math.min(window.scrollY / max, 1) : 0) + ')'; };
+        window.addEventListener('scroll', setBar, { passive: true }); window.addEventListener('resize', setBar); setBar();
+        if (reduced || !('IntersectionObserver' in window)) return;
+        const seen = new WeakSet();
+        const show = node => { node.classList.add('in'); setTimeout(() => { node.classList.remove('reveal', 'in'); node.style.removeProperty('--rd'); }, 1100); };   // afterwards the card's own hover transitions apply again
+        const io = new IntersectionObserver(entries => entries.forEach(en => { if (en.isIntersecting) { show(en.target); io.unobserve(en.target); } }), { threshold: 0.08, rootMargin: '0px 0px -4% 0px' });
+        const collect = () => {
+            const items = document.querySelectorAll('.description-box, .category-section, .ins-section, .results-panel, .discover-card, .profile-preview, .section-heading-row, .home-footer');
+            items.forEach((node, i) => {
+                if (seen.has(node)) return; seen.add(node);
+                const near = node.getBoundingClientRect().top < window.innerHeight * 0.9 && node.getBoundingClientRect().bottom > 0;
+                node.style.setProperty('--rd', Math.min(i % 4, 3) * 70 + 'ms');
+                node.classList.add('reveal'); if (near) requestAnimationFrame(() => show(node)); else io.observe(node);
+            });
+        };
+        collect();
+        let timer = null;
+        new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(collect, 120); }).observe(document.body, { childList: true, subtree: true });
+    });
+})();
